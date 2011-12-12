@@ -1,0 +1,350 @@
+/*----------------------------------------------------------------------*
+ * File:	keyboard.C
+ *----------------------------------------------------------------------*
+ *
+ * All portions of code are copyright by their respective author/s.
+ * Copyright (c) 2005      WU Fengguang
+ * Copyright (c) 2005-2006 Marc Lehmann <schmorp@schmorp.de>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ *----------------------------------------------------------------------*/
+
+#include "../config.h"
+#include "rxvt.h"
+
+#ifdef KEYSYM_RESOURCE
+
+#include <cstring>
+
+#include "rxvtperl.h"
+#include "keyboard.h"
+#include "command.h"
+
+/* an intro to the data structure:
+ *
+ * vector keymap[] is grouped.
+ *
+ * inside each group, elements are sorted by the criteria given by compare_priority().
+ * the lookup of keysym is done in two steps:
+ * 1) locate the group corresponds to the keysym;
+ * 2) do a linear search inside the group.
+ *
+ * array hash[] effectively defines a map from a keysym to a group in keymap[].
+ *
+ * each group has its address(the index of first group element in keymap[]),
+ * which is computed and stored in hash[].
+ * hash[] stores the addresses in the form of:
+ * index: 0      I1       I2       I3            In
+ * value: 0...0, A1...A1, A2...A2, A3...A3, ..., An...An
+ * where
+ * A1 = 0;
+ * Ai+1 = N1 + N2 + ... + Ni.
+ * it is computed from hash_bucket_size[]:
+ * index: 0      I1         I2         I3             In
+ * value: 0...0, N1, 0...0, N2, 0...0, N3,    ...,    Nn, 0...0
+ *        0...0, 0.......0, N1.....N1, N1+N2...N1+N2, ... (the computation of hash[])
+ * or we can say
+ * hash_bucket_size[Ii] = Ni; hash_bucket_size[elsewhere] = 0,
+ * where
+ * set {I1, I2, ..., In} = { hashkey of keymap[0]->keysym, ..., keymap[keymap.size-1]->keysym }
+ * where hashkey of keymap[i]->keysym = keymap[i]->keysym & KEYSYM_HASH_MASK
+ *       n(the number of groups) = the number of non-zero member of hash_bucket_size[];
+ *       Ni(the size of group i) = hash_bucket_size[Ii].
+ */
+
+static void
+output_string (rxvt_term *rt, const char *str)
+{
+  if (strncmp (str, "command:", 8) == 0)
+    rt->cmdbuf_append (str + 8, strlen (str) - 8);
+  else if (strncmp (str, "perl:", 5) == 0)
+    HOOK_INVOKE((rt, HOOK_USER_COMMAND, DT_STR, str + 5, DT_END));
+  else
+    rt->tt_write (str, strlen (str));
+}
+
+// return: priority_of_a - priority_of_b
+static int
+compare_priority (keysym_t *a, keysym_t *b)
+{
+  // (the more '1's in state; the less range): the greater priority
+  int ca = ecb_popcount32 (a->state /* & OtherModMask */);
+  int cb = ecb_popcount32 (b->state /* & OtherModMask */);
+
+  if (ca != cb)
+    return ca - cb;
+//else if (a->state != b->state) // this behavior is to be discussed
+//  return b->state - a->state;
+  else
+    return 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+keyboard_manager::keyboard_manager ()
+{
+  keymap.reserve (256);
+  hash [0] = 1;			// hash[0] != 0 indicates uninitialized data
+}
+
+keyboard_manager::~keyboard_manager ()
+{
+  clear ();
+}
+
+void
+keyboard_manager::clear ()
+{
+  hash [0] = 2;
+
+  for (unsigned int i = 0; i < keymap.size (); ++i)
+    {
+      free ((void *)keymap [i]->str);
+      delete keymap [i];
+      keymap [i] = 0;
+    }
+
+  keymap.clear ();
+}
+
+// a wrapper for register_translation that converts the input string
+// to utf-8 and expands 'list' syntax.
+void
+keyboard_manager::register_user_translation (KeySym keysym, unsigned int state, const char *trans)
+{
+  wchar_t *wc = rxvt_mbstowcs (trans);
+  char *translation = rxvt_wcstoutf8 (wc);
+  free (wc);
+
+  if (strncmp (translation, "list", 4) == 0 && translation [4]
+      && strlen (translation) < STRING_MAX)
+    {
+      char *prefix = translation + 4;
+      char *middle = strchr  (prefix + 1, translation [4]);
+      char *suffix = strrchr (prefix + 1, translation [4]);
+
+      if (suffix && middle && suffix > middle + 1)
+        {
+          int range = suffix - middle - 1;
+          int prefix_len = middle - prefix - 1;
+          char buf[STRING_MAX];
+
+          memcpy (buf, prefix + 1, prefix_len);
+          strcpy (buf + prefix_len + 1, suffix + 1);
+
+          for (int i = 0; i < range; i++)
+            {
+              buf [prefix_len] = middle [i + 1];
+              register_translation (keysym + i, state, strdup (buf));
+            }
+
+          free (translation);
+          return;
+        }
+      else
+        rxvt_warn ("cannot parse list-type keysym '%s', processing as normal keysym.\n", translation);
+    }
+
+  register_translation (keysym, state, translation);
+}
+
+void
+keyboard_manager::register_translation (KeySym keysym, unsigned int state, char *translation)
+{
+  keysym_t *key = new keysym_t;
+
+  if (key && translation)
+    {
+      key->keysym = keysym;
+      key->state  = state;
+      key->str    = translation;
+      key->type   = keysym_t::STRING;
+
+      if (strncmp (translation, "builtin:", 8) == 0)
+        key->type = keysym_t::BUILTIN;
+
+      register_keymap (key);
+    }
+  else
+    {
+      delete key;
+      free ((void *)translation);
+      rxvt_fatal ("out of memory, aborting.\n");
+    }
+}
+
+void
+keyboard_manager::register_keymap (keysym_t *key)
+{
+  if (keymap.size () == keymap.capacity ())
+    keymap.reserve (keymap.size () * 2);
+
+  keymap.push_back (key);
+  hash[0] = 3;
+}
+
+void
+keyboard_manager::register_done ()
+{
+  setup_hash ();
+}
+
+bool
+keyboard_manager::dispatch (rxvt_term *term, KeySym keysym, unsigned int state)
+{
+  assert (hash[0] == 0 && "register_done() need to be called");
+
+  state &= OtherModMask; // mask out uninteresting modifiers
+
+  if (state & term->ModMetaMask)    state |= MetaMask;
+  if (state & term->ModNumLockMask) state |= NumLockMask;
+  if (state & term->ModLevel3Mask)  state |= Level3Mask;
+
+  if (!!(term->priv_modes & PrivMode_aplKP) != !!(state & ShiftMask))
+    state |= AppKeypadMask;
+
+  int index = find_keysym (keysym, state);
+
+  if (index >= 0)
+    {
+      const keysym_t &key = *keymap [index];
+
+      if (key.type != keysym_t::BUILTIN)
+        {
+          wchar_t *wc = rxvt_utf8towcs (key.str);
+          char *str = rxvt_wcstombs (wc);
+          // TODO: do (some) translations, unescaping etc, here (allow \u escape etc.)
+          free (wc);
+
+          switch (key.type)
+            {
+              case keysym_t::STRING:
+                output_string (term, str);
+                break;
+            }
+
+          free (str);
+
+          return true;
+        }
+    }
+
+  return false;
+}
+
+void
+keyboard_manager::setup_hash ()
+{
+  unsigned int i, index, hashkey;
+  vector <keysym_t *> sorted_keymap;
+  uint16_t hash_bucket_size[KEYSYM_HASH_BUCKETS];	// size of each bucket
+
+  memset (hash_bucket_size, 0, sizeof (hash_bucket_size));
+
+  // determine hash bucket size
+  for (i = 0; i < keymap.size (); ++i)
+    {
+      hashkey = keymap [i]->keysym & KEYSYM_HASH_MASK;
+      ++hash_bucket_size [hashkey];
+    }
+
+  // now we know the size of each bucket
+  // compute the index of each bucket
+  hash [0] = 0;
+  for (index = 0, i = 1; i < KEYSYM_HASH_BUCKETS; ++i)
+    {
+      index += hash_bucket_size [i - 1];
+      hash [i] = index;
+    }
+
+  // and allocate just enough space
+  sorted_keymap.insert (sorted_keymap.begin (), index + hash_bucket_size [i - 1], 0);
+
+  memset (hash_bucket_size, 0, sizeof (hash_bucket_size));
+
+  // fill in sorted_keymap
+  // it is sorted in each bucket
+  for (i = 0; i < keymap.size (); ++i)
+    {
+      hashkey = keymap [i]->keysym & KEYSYM_HASH_MASK;
+
+      index = hash [hashkey] + hash_bucket_size [hashkey];
+
+      while (index > hash [hashkey]
+             && compare_priority (keymap [i], sorted_keymap [index - 1]) > 0)
+        {
+          sorted_keymap [index] = sorted_keymap [index - 1];
+          --index;
+        }
+
+      sorted_keymap [index] = keymap [i];
+      ++hash_bucket_size [hashkey];
+    }
+
+  keymap.swap (sorted_keymap);
+
+#ifndef NDEBUG
+  // check for invariants
+  for (i = 0; i < KEYSYM_HASH_BUCKETS; ++i)
+    {
+      index = hash[i];
+      for (int j = 0; j < hash_bucket_size [i]; ++j)
+        {
+          assert (i == (keymap [index + j]->keysym & KEYSYM_HASH_MASK));
+
+          if (j)
+            assert (compare_priority (keymap [index + j - 1],
+                    keymap [index + j]) >= 0);
+        }
+    }
+
+  // this should be able to detect most possible bugs
+  for (i = 0; i < sorted_keymap.size (); ++i)
+    {
+      keysym_t *a = sorted_keymap[i];
+      int index = find_keysym (a->keysym, a->state);
+
+      assert (index >= 0);
+      keysym_t *b = keymap [index];
+      assert (i == index	// the normally expected result
+              || a->keysym == b->keysym
+              && compare_priority (a, b) <= 0);	// is effectively the same or a closer match
+    }
+#endif
+}
+
+int
+keyboard_manager::find_keysym (KeySym keysym, unsigned int state)
+{
+  int hashkey = keysym & KEYSYM_HASH_MASK;
+  unsigned int index = hash [hashkey];
+  unsigned int end = hashkey < KEYSYM_HASH_BUCKETS - 1
+                     ? hash [hashkey + 1]
+                     : keymap.size ();
+
+  for (; index < end; ++index)
+    {
+      keysym_t *key = keymap [index];
+
+      if (key->keysym == keysym
+          // match only the specified bits in state and ignore others
+          && (key->state & state) == key->state)
+        return index;
+    }
+
+  return -1;
+}
+
+#endif /* KEYSYM_RESOURCE */
+// vim:et:ts=2:sw=2
