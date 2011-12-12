@@ -2225,10 +2225,46 @@ rxvt_term::button_release (XButtonEvent &ev)
                 }
               else
 # endif
+#ifndef NO_SECONDARY_SCREEN
                 {
-                  scr_page (v, i);
-                  scrollBar.show (1);
+                  /* on SECONDARY screen, we send "fake" UP/DOWN keys instead
+                   * (this allows to scroll within man, less, etc) */
+                  if (option (Opt_secondaryWheel) && current_screen != PRIMARY)
+                    {
+                       XKeyEvent event;
+                       event.display     = ev.display;
+                       event.window      = ev.window;
+                       event.root        = ev.root;
+                       event.subwindow   = ev.subwindow;
+                       event.time        = ev.time;
+                       event.x           = ev.x;
+                       event.y           = ev.y;
+                       event.x_root      = ev.x_root;
+                       event.y_root      = ev.y_root;
+                       event.same_screen = ev.same_screen;
+                       event.state       = 0;
+                       event.keycode     = XKeysymToKeycode(ev.display,
+                                            (v == UP) ? XK_Up : XK_Down);
+                       for (i = 0; i < 3; ++i)
+                         {
+                            event.type = KeyPress;
+                            XSendEvent (event.display, event.window, TRUE,
+                                        KeyPressMask, (XEvent *) &event);
+                            event.type = KeyRelease;
+                            XSendEvent (event.display, event.window, TRUE,
+                                        KeyPressMask, (XEvent *) &event);
+                          }
+                    }
+                  /* on PRIMARY screen, we scroll in the buffer */
+                  else
+#endif
+                    {
+                       scr_page (v, i);
+                       scrollBar.show (1);
+                    }
+#ifndef NO_SECONDARY_SCREEN
                 }
+#endif
             }
             break;
 #endif

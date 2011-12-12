@@ -262,6 +262,7 @@ optList[] = {
 #ifndef NO_SECONDARY_SCREEN
               BOOL (Rs_secondaryScreen, "secondaryScreen", "ssc", Opt_secondaryScreen, 0, "enable secondary screen"),
               BOOL (Rs_secondaryScroll, "secondaryScroll", "ssr", Opt_secondaryScroll, 0, "enable secondary screen scroll"),
+              BOOL (Rs_secondaryWheel, "secondaryWheel", "ssw", Opt_secondaryWheel, 0, "enable secondary screen wheel"),
 #endif
 #if ENABLE_PERL
               RSTRG (Rs_perl_lib, "perl-lib", "string"), //, "colon-separated directories with extension scripts"),TODO
