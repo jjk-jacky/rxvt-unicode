@@ -2899,6 +2899,10 @@ rxvt_term::process_csi_seq ()
       return;
     }
 
+  /* remember the current row on position change, in case there's a clear screen
+   * right after, so that we can add "preserve" the buffer (e.g. on ^L) */
+  static int old_row = -1, was_moved = 0;
+  
   switch (ch)
     {
         /*
@@ -2962,16 +2966,11 @@ rxvt_term::process_csi_seq ()
 
       case CSI_CUP:		/* 8.3.21: (1,1) CURSOR POSITION */
       case CSI_HVP:		/* 8.3.64: (1,1) CHARACTER AND LINE POSITION */
-        if (nargs == 1 && current_screen == 0)
+        /* if moving to row 1, remember current row in case a clear screen comes next */
+        if (nargs == 1 && arg[0] == 1 && current_screen == 0)
           {
-            // This is usually followed with clear screen so add some extra
-            // lines to avoid deleting the lines already on screen. If we are
-            // already at the top, add an extra screen height of lines.
-            int extra_lines = nrow-1;
-            if (screen.cur.row == 0)
-              extra_lines += nrow;
-            for (int i = 0; i < extra_lines; ++i)
-              scr_add_lines (L"\r\n", 2);
+            was_moved = 1;
+            old_row = screen.cur.row;
           }
         scr_gotorc (arg[0] - 1, nargs < 2 ? 0 : (arg[1] - 1), 0);
         break;
@@ -2984,6 +2983,16 @@ rxvt_term::process_csi_seq ()
         break;
 
       case CSI_ED:		/* 8.3.40: (0) ERASE IN PAGE */
+        if (was_moved)
+          {
+            /* this is most likely a ^L, so we'll go back to where we where before
+             * the position change, add a screen of empty lines, then move back
+             * on top. that way the (scrolling) buffer will be preserved */
+            scr_gotorc (old_row, 0, 0);
+            for (int i = nrow - 1; i > 0; --i)
+                scr_add_lines (L"\r\n", 2);
+            scr_gotorc (0, 0, 0);
+          }
         scr_erase_screen (arg[0]);
         break;
 
@@ -3127,6 +3136,16 @@ rxvt_term::process_csi_seq ()
       default:
         break;
     }
+    if (was_moved > 0)
+      {
+        if (was_moved > 1)
+          {
+            was_moved = 0;
+            old_row = -1;
+          }
+        else
+          ++was_moved;
+      }
 }
 /*}}} */
 
