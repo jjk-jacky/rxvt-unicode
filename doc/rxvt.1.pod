@@ -417,6 +417,11 @@ B<secondaryScreen>.
 Turn on/off secondary screen scroll (default enabled); resource
 B<secondaryScroll>.
 
+=item B<-ssw>|B<+ssw>
+
+Turn on/off secondary screen wheel support (default disabled); resource
+B<secondaryWheel>.
+
 =item B<-hold>|B<+hold>
 
 Turn on/off hold window after exit support. If enabled, @@RXVT_NAME@@
@@ -1028,6 +1033,13 @@ Turn on/off secondary screen scroll (default enabled). If this
 option is enabled, scrolls on the secondary screen will change the
 scrollback buffer and, when secondaryScreen is off, switching
 to/from the secondary screen will instead scroll the screen up.
+
+=item B<secondaryWheel:> I<boolean>
+
+Turn on/off secondary wheel (default disabled). If enabled, when on
+secondary screen, using the mouse wheel will not scroll in the buffer
+but instead send 3 "fake" keystrokes (Up/Down arrow) to the running
+application (allows e.g. natural scrolling in B<man>, B<less>, etc).
 
 =item B<hold>: I<boolean>
 

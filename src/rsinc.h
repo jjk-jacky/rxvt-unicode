@@ -103,6 +103,7 @@
 #ifndef NO_SECONDARY_SCREEN
   def (secondaryScreen)
   def (secondaryScroll)
+  def (secondaryWheel)
 #endif
 #if OFF_FOCUS_FADING
   def (fade)
