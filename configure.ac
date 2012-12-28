@@ -225,18 +225,6 @@ AC_ARG_ENABLE(font-styles,
     support_styles=$enableval
   fi])
 
-AC_ARG_ENABLE(afterimage,
-  [  --enable-afterimage     enable integration with libAfterImage for background images (deprecated)],
-  [if test x$enableval = xyes -o x$enableval = xno; then
-    support_afterimage=$enableval
-  fi])
-
-AC_ARG_WITH(afterimage_config,
-  [  --with-afterimage-config=DIR  use libAfterImage config script in DIR],
-  [if test "x$withval" != x; then
-    afterimage_config=$withval/afterimage-config
-  fi])
-
 AC_ARG_ENABLE(pixbuf,
   [  --enable-pixbuf         enable integration with gdk-pixbuf for background images],
   [if test x$enableval = xyes -o x$enableval = xno; then
@@ -453,9 +441,7 @@ if test x$support_pixbuf = xyes; then
   if test x$support_pixbuf = xyes; then
     AC_MSG_RESULT(ok)
     image_lib=gdk-pixbuf
-    support_afterimage=no
     AC_DEFINE(HAVE_PIXBUF, 1, Define if you want to use gdk-pixbuf for image processing)
-    AC_DEFINE(BG_IMAGE_FROM_FILE, 1, Define if you want to have sexy-looking background pixmaps.)
   else
     AC_MSG_RESULT(no)
   fi
@@ -487,45 +473,6 @@ fi
 
 AC_SUBST(STARTUP_NOTIFICATION_CFLAGS)
 AC_SUBST(STARTUP_NOTIFICATION_LIBS)
-
-AFTERIMAGE_CFLAGS=
-AFTERIMAGE_LIBS=
-
-if test x$support_afterimage = xyes; then
-  support_afterimage=no
-
-  if test "x$afterimage_config" = "x" ; then
-    AC_PATH_PROG(afterimage_config, afterimage-config, no)
-  fi
-  if test "x$afterimage_config" != "xno" ; then
-    AC_MSG_CHECKING(for libAfterImage version >= 1.15)
-    AFTERIMAGE_VERSION=`$afterimage_config --version`
-    if test -n "$AFTERIMAGE_VERSION" ; then
-      AFTERIMAGE_CFLAGS=`$afterimage_config --cflags`
-      AFTERIMAGE_LIBS=`$afterimage_config --libs`
-      if test "x$AFTERIMAGE_LIBS" != "x"; then
-        libai_ver_major=`echo $AFTERIMAGE_VERSION | cut -f 1 -d .`
-        libai_ver_minor=`echo $AFTERIMAGE_VERSION | cut -f 2 -d .`
-        if test $libai_ver_major -gt 1 -o \( $libai_ver_major -eq 1 -a $libai_ver_minor -ge 15 \); then
-          support_afterimage=yes
-        fi
-      fi
-    fi
-    if test "x$support_afterimage" = "xyes"; then
-      AC_MSG_RESULT($AFTERIMAGE_LIBS)
-      image_lib=libafterimage
-      AC_DEFINE(HAVE_AFTERIMAGE, 1, Define if you want to use libAfterImage for image processing)
-      AC_DEFINE(BG_IMAGE_FROM_FILE, 1, Define if you want to have sexy-looking background pixmaps.)
-    else
-      AC_MSG_RESULT(no)
-      AFTERIMAGE_CFLAGS=
-      AFTERIMAGE_LIBS=
-    fi
-  fi
-fi
-
-AC_SUBST(AFTERIMAGE_CFLAGS)
-AC_SUBST(AFTERIMAGE_LIBS)
 
 dnl# --------------------------------------------------------------------------
 dnl# CHECKING FOR HEADER FILES
@@ -640,7 +587,11 @@ TTY_GROUP_CHECK
 dnl# --------------------------------------------------------------------------
 dnl# now add and remove other stuff
 dnl# --------------------------------------------------------------------------
-if test x$support_xft = xyes || test x$support_inheritpixmap = xyes; then
+support_image=no
+if test x$support_inheritpixmap = xyes || test x$support_pixbuf = xyes; then
+  support_image=yes
+fi
+if test x$support_xft = xyes || test x$support_image = xyes; then
   rxvt_have_xrender=no
   AC_PATH_PROG(PKG_CONFIG, pkg-config, no)
   if test $PKG_CONFIG != no && $PKG_CONFIG --exists xrender; then
@@ -686,6 +637,20 @@ if test x$support_xft = xyes && test x$rxvt_have_xrender = xyes; then
     AC_DEFINE(XFT, 1, Define to enable xft support)
   fi
 fi
+
+if test x$support_image = xyes && test x$rxvt_have_xrender = xyes; then
+  LIBS="$LIBS -lm"
+  AC_DEFINE(XRENDER, 1, Define to enable xrender support)
+
+  if test x$support_inheritpixmap = xyes; then
+    AC_DEFINE(ENABLE_TRANSPARENCY, 1, Define if you want your background to use the parent window background)
+  fi
+
+  if test x$support_pixbuf = xyes; then
+    AC_DEFINE(BG_IMAGE_FROM_FILE, 1, Define if you want to have sexy-looking background pixmaps.)
+  fi
+fi
+
 if test x$support_styles = xyes; then
   AC_DEFINE(ENABLE_STYLES, 1, Define if you want bold and italic support)
 fi
@@ -697,13 +662,6 @@ if test x$support_8bitctrls = xyes; then
 fi
 if test x$support_fading = xyes; then
   AC_DEFINE(OFF_FOCUS_FADING, 1, Define if you want faded colors when focus is lost)
-fi
-if test x$support_inheritpixmap = xyes; then
-  if test x$rxvt_have_xrender = xyes; then
-    LIBS="$LIBS -lm"
-    AC_DEFINE(XRENDER, 1, Define to enable xrender support)
-  fi
-  AC_DEFINE(ENABLE_TRANSPARENCY, 1, Define if you want your background to use the parent window background)
 fi
 if test x$support_keepscrolling = xno; then
   AC_DEFINE(NO_SCROLLBAR_BUTTON_CONTINUAL_SCROLLING, 1, Define for continual scrolling when you keep the scrollbar button pressed)
@@ -765,8 +723,7 @@ done
 
 IF_PERL=\#
 if test x$support_perl = xyes; then
-  AC_PATH_PROG(PERL, perl5)
-  AC_PATH_PROG(PERL, perl)
+  AC_PATH_PROG(PERL, perl5, perl)
 
   AC_MSG_CHECKING(for $PERL suitability)
   if $PERL -MExtUtils::Embed -e "use v5.8" >/dev/null 2>/dev/null; then

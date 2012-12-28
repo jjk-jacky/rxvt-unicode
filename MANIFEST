@@ -37,7 +37,8 @@ doc/rxvt.1.man.in
 doc/rxvt.7.man.in
 doc/rxvtc.1.man.in
 doc/rxvtd.1.man.in
-doc/rxvtperl.3.man.in
+doc/extensions.pod.top
+doc/extensions.pod.bot
 
 src/.cvsignore
 src/Makefile.in
@@ -66,6 +67,8 @@ src/rxvttoolkit.C
 src/rxvttoolkit.h
 src/rxvtfont.C
 src/rxvtfont.h
+src/rxvtimg.h
+src/rxvtimg.C
 src/rxvt.C
 src/rxvt.h
 src/rsinc.h
@@ -73,8 +76,6 @@ src/rxvtc.C
 src/rxvtd.C
 src/rxvtdaemon.C
 src/rxvtdaemon.h
-src/salloc.C
-src/salloc.h
 src/screen.C
 src/scrollbar-next.C
 src/scrollbar-rxvt.C
@@ -84,6 +85,8 @@ src/scrollbar.C
 src/scrollbar.h
 src/version.h
 src/xdefaults.C
+src/emman.h
+src/emman.c
 
 libptytty/Changes
 libptytty/ptytty.m4
@@ -94,6 +97,8 @@ libptytty/src/ptytty.C
 libptytty/src/proxy.C
 libptytty/src/logging.C
 libptytty/src/fdpass.C
+libptytty/src/estl.h
+libptytty/src/ecb.h
 
 src/gentables
 src/gencompose
@@ -147,6 +152,7 @@ src/iom_perl.xs
 src/rxvtperl.h
 src/rxvtperl.xs
 
+src/perl/background
 src/perl/bell-command
 src/perl/block-graphics-to-ascii
 src/perl/clipboard-osc
@@ -184,6 +190,4 @@ libev/ev_epoll.c
 libev/ev_kqueue.c
 libev/ev_port.c
 libev/libev.m4
-
-libecb/ecb.h
 

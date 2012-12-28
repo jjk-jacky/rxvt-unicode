@@ -174,7 +174,7 @@ rxvt_term::rxvt_term ()
   rootwin_ev.set          <rxvt_term, &rxvt_term::rootwin_cb> (this),
 #endif
   scrollbar_ev.set        <rxvt_term, &rxvt_term::x_cb>       (this),
-#ifdef USE_XIM
+#if USE_XIM
   im_ev.set               <rxvt_term, &rxvt_term::im_cb>      (this),
 #endif
 #ifdef POINTER_BLANK
@@ -233,7 +233,7 @@ rxvt_term::~rxvt_term ()
       selection_clear ();
       selection_clear (true);
 
-#ifdef USE_XIM
+#if USE_XIM
       im_destroy ();
 #endif
       scrollBar.destroy ();
@@ -364,7 +364,6 @@ rxvt_term::set_option (uint8_t opt, bool set) NOTHROW
 /*----------------------------------------------------------------------*/
 /*
  * Exit gracefully, clearing the utmp entry and restoring tty attributes
- * TODO: if debugging, this should free up any known resources if we can
  */
 static XErrorHandler old_xerror_handler;
 
@@ -376,55 +375,105 @@ rxvt_emergency_cleanup ()
 }
 
 #if !ENABLE_MINIMAL
-static void
+static void ecb_cold
 print_x_error (Display *dpy, XErrorEvent *event)
 {
     char buffer[BUFSIZ];
     char mesg[BUFSIZ];
     char number[32];
-    const char mtype[] = "XlibMessage";
-    XGetErrorText(dpy, event->error_code, buffer, BUFSIZ);
-    XGetErrorDatabaseText(dpy, mtype, "XError", "X Error", mesg, BUFSIZ);
+
     rxvt_warn ("An X Error occurred, trying to continue after report.\n");
-    rxvt_warn ("%s:  %s\n", mesg, buffer);
-    XGetErrorDatabaseText(dpy, mtype, "MajorCode", "Request Major code %d", mesg, BUFSIZ);
-    rxvt_warn (strncat (mesg, "\n", BUFSIZ), event->request_code);
-    sprintf(number, "%d", event->request_code);
-    XGetErrorDatabaseText(dpy, "XRequest", number, "", buffer, BUFSIZ);
-    rxvt_warn ("(which is %s)\n", buffer);
-    if (event->request_code >= 128) {
-        XGetErrorDatabaseText(dpy, mtype, "MinorCode", "Request Minor code %d",
-                              mesg, BUFSIZ);
-        rxvt_warn (strncat (mesg, "\n", BUFSIZ), event->minor_code);
-    }
-    if ((event->error_code == BadWindow) ||
-               (event->error_code == BadPixmap) ||
-               (event->error_code == BadCursor) ||
-               (event->error_code == BadFont) ||
-               (event->error_code == BadDrawable) ||
-               (event->error_code == BadColor) ||
-               (event->error_code == BadGC) ||
-               (event->error_code == BadIDChoice) ||
-               (event->error_code == BadValue) ||
-               (event->error_code == BadAtom)) {
+
+    XGetErrorDatabaseText (dpy, "XlibMessage", "ErrorSerial", "Error Serial #%d", mesg, BUFSIZ);
+    snprintf (buffer, BUFSIZ, "+ %s\n", mesg); rxvt_warn (buffer, event->serial);
+
+    XGetErrorText (dpy, event->error_code, buffer, BUFSIZ);
+    XGetErrorDatabaseText (dpy, "XlibMessage", "XError", "X Error", mesg, BUFSIZ);
+    rxvt_warn ("+ %s: %s\n", mesg, buffer);
+
+    XGetErrorDatabaseText (dpy, "XlibMessage", "MajorCode", "Request Major code %d", mesg, BUFSIZ);
+    snprintf (buffer, BUFSIZ, "+ %s\n", mesg); rxvt_warn (buffer, event->request_code);
+
+    if (event->request_code >= 128)
+      {
+#if 0
+        /* XListExtensions and probably query extensions hangs when there are multiple queues errors */
+        int nexts;
+        char **exts = XListExtensions (dpy, &nexts);
+
+        while (nexts)
+          {
+            char *extname = exts [nexts - 1];
+            int major, first_event, first_error;
+
+            if (XQueryExtension (dpy, extname, &major, &first_event, &first_error) && major == event->request_code)
+              {
+                XGetErrorDatabaseText (dpy, "XlibMessage", "MinorCode", "Request Minor code %d", mesg, BUFSIZ);
+                rxvt_warn ("+ (which is extension %s minor code %d)\n", extname, event->minor_code);
+
+                snprintf (buffer, BUFSIZ, "%s.%d", extname, event->minor_code);
+                XGetErrorDatabaseText (dpy, "XRequest", buffer, "an unregistered minor code", buffer, BUFSIZ);
+                rxvt_warn ("+ (which is %s)\n", buffer);
+
+                break;
+              }
+
+            printf ("nextss %d %s\n", nexts, extname);//D
+            --nexts;
+            ++exts;
+          }
+#else
+        int nexts = 0;
+        char **exts = 0;
+#endif
+
+        if (!nexts)
+          {
+            rxvt_warn ("+ (which is an unknown extension)\n", buffer);
+
+            XGetErrorDatabaseText (dpy, "XlibMessage", "MinorCode", "Request Minor code %d", mesg, BUFSIZ);
+            snprintf (buffer, BUFSIZ, "+ %s\n", mesg); rxvt_warn (buffer, event->minor_code);
+
+#if 0
+            sprintf (number, "RENDER.%d", event->minor_code);
+            XGetErrorDatabaseText (dpy, "XRequest", number, "", buffer, BUFSIZ);
+            rxvt_warn ("+ (which is %s)\n", buffer);
+#endif
+          }
+
+        XFreeExtensionList (exts);
+      }
+    else
+      {
+        sprintf (number, "%d", event->request_code);
+        XGetErrorDatabaseText (dpy, "XRequest", number, "", buffer, BUFSIZ);
+        rxvt_warn ("+ (which is %s)\n", buffer);
+      }
+
+    if (event->error_code == BadWindow
+        || event->error_code == BadPixmap
+        || event->error_code == BadCursor
+        || event->error_code == BadFont
+        || event->error_code == BadDrawable
+        || event->error_code == BadColor
+        || event->error_code == BadGC
+        || event->error_code == BadIDChoice
+        || event->error_code == BadValue
+        || event->error_code == BadAtom)
+      {
         if (event->error_code == BadValue)
-            XGetErrorDatabaseText(dpy, mtype, "Value", "Value 0x%x",
-                                  mesg, BUFSIZ);
+          XGetErrorDatabaseText (dpy, "XlibMessage", "Value", "Value 0x%x", mesg, BUFSIZ);
         else if (event->error_code == BadAtom)
-            XGetErrorDatabaseText(dpy, mtype, "AtomID", "AtomID 0x%x",
-                                  mesg, BUFSIZ);
+          XGetErrorDatabaseText (dpy, "XlibMessage", "AtomID", "AtomID 0x%x", mesg, BUFSIZ);
         else
-            XGetErrorDatabaseText(dpy, mtype, "ResourceID", "ResourceID 0x%x",
-                                  mesg, BUFSIZ);
-        rxvt_warn (strncat (mesg, "\n", BUFSIZ), event->resourceid);
+          XGetErrorDatabaseText (dpy, "XlibMessage", "ResourceID", "ResourceID 0x%x", mesg, BUFSIZ);
+
+        snprintf (buffer, BUFSIZ, "+ %s\n", mesg); rxvt_warn (buffer, event->resourceid);
     }
-    XGetErrorDatabaseText(dpy, mtype, "ErrorSerial", "Error Serial #%d",
-                          mesg, BUFSIZ);
-    rxvt_warn (strncat (mesg, "\n", BUFSIZ), event->serial);
 }
 #endif
 
-int
+int ecb_cold
 rxvt_xerror_handler (Display *display, XErrorEvent *event)
 {
   if (GET_R->allowedxerror == -1)
@@ -443,7 +492,7 @@ rxvt_xerror_handler (Display *display, XErrorEvent *event)
   return 0;
 }
 
-int
+int ecb_cold
 rxvt_xioerror_handler (Display *display)
 {
   rxvt_warn ("X connection to '%s' broken, unable to recover, exiting.\n",
@@ -573,6 +622,10 @@ rxvt_init ()
   XSetIOErrorHandler (rxvt_xioerror_handler);
 
   XrmInitialize ();
+
+#if HAVE_PIXBUF
+  g_type_init ();
+#endif
 }
 
 /*----------------------------------------------------------------------*/
@@ -766,13 +819,12 @@ rxvt_term::set_fonts ()
   fontset[0] = fs;
 
   prop = (*fs)[rxvt_fontset::firstFont]->properties ();
-  prop.height += lineSpace;
-  prop.width += letterSpace;
+  prop.width = max (prop.width + letterSpace, 1);
 
   fs->set_prop (prop, false);
 
   fwidth  = prop.width;
-  fheight = prop.height;
+  fheight = prop.height + lineSpace;
   fbase   = prop.ascent;
 
   for (int style = 1; style < 4; style++)
@@ -964,7 +1016,7 @@ rxvt_term::get_colorfgbg ()
     if (pix_colors[Color_bg] == pix_colors[i])
       {
         sprintf (bstr, "%d", i - Color_Black);
-#ifdef BG_IMAGE_FROM_FILE
+#if BG_IMAGE_FROM_FILE
         xpmb = "default;";
 #endif
         break;
@@ -1077,6 +1129,8 @@ rxvt_term::resize_all_windows (unsigned int newwidth, unsigned int newheight, in
                          window_vt_x, window_vt_y,
                          vt_width, vt_height);
 
+      HOOK_INVOKE ((this, HOOK_SIZE_CHANGE, DT_INT, newwidth, DT_INT, newheight, DT_END));
+
 #ifdef HAVE_BG_PIXMAP
       if (bg_window_size_sensitive ())
         update_background ();
@@ -1086,7 +1140,7 @@ rxvt_term::resize_all_windows (unsigned int newwidth, unsigned int newheight, in
   if (fix_screen || old_height == 0)
     scr_reset ();
 
-#ifdef USE_XIM
+#if USE_XIM
   im_set_position ();
 #endif
 }
@@ -1121,7 +1175,7 @@ rxvt_term::set_widthheight (unsigned int newwidth, unsigned int newheight)
 /* -------------------------------------------------------------------- *
  * -                      X INPUT METHOD ROUTINES                     - *
  * -------------------------------------------------------------------- */
-#ifdef USE_XIM
+#if USE_XIM
 
 void
 rxvt_term::im_set_color (unsigned long &fg, unsigned long &bg)
@@ -1621,28 +1675,6 @@ rxvt_term::get_window_origin (int &x, int &y)
 {
   Window cr;
   XTranslateCoordinates (dpy, parent, display->root, 0, 0, &x, &y, &cr);
-}
-
-Pixmap
-rxvt_term::get_pixmap_property (Atom property)
-{
-  Pixmap pixmap = None;
-
-  int aformat;
-  unsigned long nitems, bytes_after;
-  Atom atype;
-  unsigned char *prop;
-  int result = XGetWindowProperty (dpy, display->root, property,
-                                   0L, 1L, False, XA_PIXMAP, &atype, &aformat,
-                                   &nitems, &bytes_after, &prop);
-  if (result == Success)
-    {
-      if (atype == XA_PIXMAP)
-        pixmap = *(Pixmap *)prop;
-      XFree (prop);
-    }
-
-  return pixmap;
 }
 
 #ifdef HAVE_BG_PIXMAP

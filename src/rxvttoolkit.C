@@ -68,7 +68,7 @@ static const char *const xa_names[] =
   "WM_LOCALE_NAME",
   "XIM_SERVERS",
 #endif
-#ifdef ENABLE_TRANSPARENCY
+#if ENABLE_TRANSPARENCY || ENABLE_PERL
   "_XROOTPMAP_ID",
   "ESETROOT_PMAP_ID",
 #endif
@@ -155,7 +155,7 @@ void refcache<T>::clear ()
 
 /////////////////////////////////////////////////////////////////////////////
 
-#ifdef USE_XIM
+#if USE_XIM
 
 static void
 #if XIMCB_PROTO_BROKEN
@@ -262,20 +262,40 @@ rxvt_screen::set (rxvt_display *disp)
   cmap    = DefaultColormapOfScreen (screen);
 }
 
+#if ENABLE_FRILLS
+
 void
-rxvt_screen::select_visual (int bitdepth)
+rxvt_screen::select_visual (int id)
 {
-#if XFT
+  XVisualInfo vinfo;
+  vinfo.visualid = id;
+  int n;
+
+  if (XVisualInfo *vi = XGetVisualInfo (dpy, VisualIDMask, &vinfo, &n))
+    {
+      depth  = vi->depth;
+      visual = vi->visual;
+
+      XFree (vi);
+
+      cmap = XCreateColormap (dpy, display->root, visual, AllocNone);
+    }
+  else
+    rxvt_warn ("cannot requested visual id 0x%02x, using default visual.\n", id);
+}
+
+void
+rxvt_screen::select_depth (int bitdepth)
+{
   XVisualInfo vinfo;
 
   if (XMatchVisualInfo (dpy, display->screen, bitdepth, TrueColor, &vinfo))
-    {
-      depth  = bitdepth;
-      visual = vinfo.visual;
-      cmap   = XCreateColormap (dpy, display->root, visual, AllocNone);
-    }
-#endif
+    select_visual (vinfo.visualid);
+  else
+    rxvt_warn ("no visual found for requested depth %d, using default visual.\n", bitdepth);
 }
+
+#endif
 
 void
 rxvt_screen::clear ()
@@ -432,10 +452,11 @@ bool rxvt_display::ref_init ()
 #ifdef LOCAL_X_IS_UNIX
   if (id[0] == ':')
     {
-      if (!(val = rxvt_temp_buf<char> (5 + strlen (id) + 1)))
-        return false;
+      char *val = rxvt_temp_buf<char> (5 + strlen (id) + 1);
+
       strcpy (val, "unix/");
       strcat (val, id);
+
       dpy = XOpenDisplay (val);
     }
   else
@@ -465,6 +486,30 @@ bool rxvt_display::ref_init ()
   blank_cursor = XCreateGlyphCursor (dpy, f, f, ' ', ' ',
                                      &blackcolour, &blackcolour);
   XUnloadFont (dpy, f);
+#endif
+
+  flags = 0;
+#if XRENDER
+  int major, minor;
+  if (XRenderQueryVersion (dpy, &major, &minor))
+    if (major > 0 || (major == 0 && minor >= 10))
+      {
+        flags |= DISPLAY_HAS_RENDER;
+
+#if 0
+        if (major > 0 || (major == 0 && minor >= 11))
+          flags |= DISPLAY_HAS_RENDER_MUL;
+#endif
+
+        if (XFilters *filters = XRenderQueryFilters (dpy, root))
+          {
+            for (int i = 0; i < filters->nfilter; i++)
+              if (!strcmp (filters->filter [i], FilterConvolution))
+                flags |= DISPLAY_HAS_RENDER_CONV;
+
+            XFree (filters);
+          }
+      }
 #endif
 
   int fd = XConnectionNumber (dpy);
@@ -513,14 +558,14 @@ rxvt_display::~rxvt_display ()
 #endif
   x_ev.stop ();
   flush_ev.stop ();
-#ifdef USE_XIM
+#if USE_XIM
   xims.clear ();
 #endif
   XrmDestroyDatabase (XrmGetDatabase (dpy));
   XCloseDisplay (dpy);
 }
 
-#ifdef USE_XIM
+#if USE_XIM
 void rxvt_display::im_change_cb ()
 {
   for (im_watcher **i = imw.begin (); i != imw.end (); ++i)
@@ -566,7 +611,7 @@ void rxvt_display::flush_cb (ev::prepare &w, int revents)
         XEvent xev;
         XNextEvent (dpy, &xev);
 
-#ifdef USE_XIM
+#if USE_XIM
         if (!XFilterEvent (&xev, None))
           {
             if (xev.type == PropertyNotify
@@ -584,7 +629,7 @@ void rxvt_display::flush_cb (ev::prepare &w, int revents)
                 else if (xw[i]->window == xev.xany.window)
                   xw[i]->call (xev);
               }
-#ifdef USE_XIM
+#if USE_XIM
           }
 #endif
       }
@@ -625,7 +670,7 @@ void rxvt_display::set_selection_owner (rxvt_term *owner, bool clipboard)
   cur_owner = owner;
 }
 
-#ifdef USE_XIM
+#if USE_XIM
 
 void rxvt_display::reg (im_watcher *w)
 {
@@ -668,6 +713,28 @@ void rxvt_display::put_xim (rxvt_xim *xim)
 Atom rxvt_display::atom (const char *name)
 {
   return XInternAtom (dpy, name, False);
+}
+
+Pixmap
+rxvt_display::get_pixmap_property (Atom property)
+{
+  Pixmap pixmap = None;
+
+  int aformat;
+  unsigned long nitems, bytes_after;
+  Atom atype;
+  unsigned char *prop;
+  int result = XGetWindowProperty (dpy, root, property,
+                                   0L, 1L, False, XA_PIXMAP, &atype, &aformat,
+                                   &nitems, &bytes_after, &prop);
+  if (result == Success)
+    {
+      if (atype == XA_PIXMAP)
+        pixmap = *(Pixmap *)prop;
+      XFree (prop);
+    }
+
+  return pixmap;
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -844,7 +911,7 @@ rxvt_color::set (rxvt_screen *screen, const rgba &color)
 }
 
 void
-rxvt_color::get (rgba &color)
+rxvt_color::get (rgba &color) const
 {
 #if XFT
   color.r = c.color.red;
@@ -860,7 +927,7 @@ rxvt_color::get (rgba &color)
 }
 
 void
-rxvt_color::get (XColor &color)
+rxvt_color::get (XColor &color) const
 {
   rgba c;
   get (c);

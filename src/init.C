@@ -78,7 +78,7 @@
 #include <net/if.h>
 #include <net/if_arp.h>
 
-static char *
+static char * ecb_cold
 rxvt_network_display (const char *display)
 {
   char            buffer[1024], *rval = NULL;
@@ -590,9 +590,11 @@ rxvt_term::init_resources (int argc, const char *const *argv)
   set (display);
   extract_resources ();
 
-#if XFT
-  if (rs[Rs_depth])
-    select_visual (strtol (rs[Rs_depth], 0, 0));
+#if ENABLE_FRILLS
+  if (rs[Rs_visual])
+    select_visual (strtol (rs[Rs_visual], 0, 0));
+  else if (rs[Rs_depth])
+    select_depth (strtol (rs[Rs_depth], 0, 0));
 #endif
 
   for (int i = NUM_RESOURCES; i--; )
@@ -793,16 +795,6 @@ rxvt_term::init2 (int argc, const char *const *argv)
 
   pty = ptytty::create ();
 
-#ifdef HAVE_AFTERIMAGE
-  set_application_name ((char *)rs[Rs_name]);
-  set_output_threshold (OUTPUT_LEVEL_WARNING);
-#endif
-
-  // must be called before create_windows, because the latter may call set_icon
-#ifdef HAVE_PIXBUF
-  g_type_init ();
-#endif
-
   create_windows (argc, argv);
 
   init_xlocale ();
@@ -815,37 +807,9 @@ rxvt_term::init2 (int argc, const char *const *argv)
 
   if (option (Opt_scrollBar))
     scrollBar.resize ();      /* create and map scrollbar */
+
 #ifdef HAVE_BG_PIXMAP
-  {
-    bg_init ();
-
-#ifdef ENABLE_TRANSPARENCY
-    if (option (Opt_transparent))
-      {
-        bg_set_transparent ();
-
-        if (rs [Rs_blurradius])
-          bg_set_blur (rs [Rs_blurradius]);
-
-        if (ISSET_PIXCOLOR (Color_tint))
-          bg_set_tint (pix_colors_focused [Color_tint]);
-
-        if (rs [Rs_shade])
-          bg_set_shade (rs [Rs_shade]);
-
-        bg_set_root_pixmap ();
-        XSelectInput (dpy, display->root, PropertyChangeMask);
-        rootwin_ev.start (display, display->root);
-      }
-#endif
-
-#ifdef BG_IMAGE_FROM_FILE
-    if (rs[Rs_backgroundPixmap])
-      if (bg_set_file (rs[Rs_backgroundPixmap]))
-        if (!bg_window_position_sensitive ())
-          update_background ();
-#endif
-  }
+  bg_init ();
 #endif
 
 #if ENABLE_PERL
@@ -1023,7 +987,7 @@ rxvt_term::init_xlocale ()
 {
   set_environ (envv);
 
-#ifdef USE_XIM
+#if USE_XIM
   if (!locale)
     rxvt_warn ("setting locale failed, continuing without locale support.\n");
   else
@@ -1296,58 +1260,7 @@ rxvt_term::get_ourmods ()
 void
 rxvt_term::set_icon (const char *file)
 {
-#ifdef HAVE_AFTERIMAGE
-  init_asv ();
-
-  ASImage *im = file2ASImage (file, 0xFFFFFFFF, SCREEN_GAMMA, 0, NULL);
-  if (!im)
-    {
-      rxvt_warn ("Loading image icon failed, continuing without.\n");
-      return;
-    }
-
-  unsigned int w = im->width;
-  unsigned int h = im->height;
-
-  if (!IN_RANGE_INC (w, 1, 16383) || !IN_RANGE_INC (h, 1, 16383))
-    {
-      rxvt_warn ("Icon image too big, continuing without.\n");
-      destroy_asimage (&im);
-      return;
-    }
-
-  ASImage *result = scale_asimage (asv, im,
-                                   w, h, ASA_ARGB32,
-                                   100, ASIMAGE_QUALITY_DEFAULT);
-  destroy_asimage (&im);
-
-  if (!result)
-    {
-      rxvt_warn ("Icon image transformation to ARGB failed, continuing without.\n");
-      return;
-    }
-
-  long *buffer = (long *)malloc ((2 + w * h) * sizeof (long));
-  if (buffer)
-    {
-      ARGB32 *asbuf = result->alt.argb32;
-      buffer [0] = w;
-      buffer [1] = h;
-
-      for (unsigned int i = 0; i < w * h; ++i)
-        buffer [i + 2] = asbuf [i];
-
-      XChangeProperty (dpy, parent, xa[XA_NET_WM_ICON], XA_CARDINAL, 32,
-                       PropModeReplace, (const unsigned char *) buffer, 2 + w * h);
-      free (buffer);
-    }
-  else
-    rxvt_warn ("Memory allocation for icon hint failed, continuing without.\n");
-
-  destroy_asimage (&result);
-#endif
-
-#ifdef HAVE_PIXBUF
+#if HAVE_PIXBUF
   GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file (file, NULL);
   if (!pixbuf)
     {

@@ -23,11 +23,24 @@
 # Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 # ----------------------------------------------------------------------
 
-# Usage:
+=head1 NAME
 
-# URxvt.perl-ext-common: macosx-clipboard
-# URxvt.keysym.M-c: perl:macosx-clipboard:copy
-# URxvt.keysym.M-v: perl:macosx-clipboard:paste
+macosx-clipboard - Mac OS X clipboard support
+
+=head1 SYNOPSIS
+
+   urxvt -pe macosx-clipboard
+
+=head1 DESCRIPTION
+
+This extension implements commands to interact with the Mac OS X
+clipboard and requires the C<Mac::Pasteboard> module. It is used like
+this:
+
+   URxvt.keysym.M-c: perl:macosx-clipboard:copy
+   URxvt.keysym.M-v: perl:macosx-clipboard:paste
+
+=cut
 
 use Mac::Pasteboard;
 

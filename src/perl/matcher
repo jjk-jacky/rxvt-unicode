@@ -3,13 +3,56 @@
 # Author: Tim Pope <rxvt-unicodeNOSPAM@tpope.org>
 #          Bob Farrell <robertanthonyfarrell@gmail.com>
 
+#:META:X_RESOURCE:%.launcher:string:default launcher command
+#:META:X_RESOURCE:%.button:string:the button, yeah
+#:META:X_RESOURCE:%.pattern.:string:extra pattern to match
+#:META:X_RESOURCE:%.launcher.:string:custom launcher for pattern
+#:META:X_RESOURCE:%.rend.:string:custom rednition for pattern
+
+=head1 NAME
+
+matcher - match strings in terminal output and change their rendition
+
+=head1 DESCRIPTION
+
+Uses per-line display filtering (C<on_line_update>) to underline text
+matching a certain pattern and make it clickable. When clicked with the
+mouse button specified in the C<matcher.button> resource (default 2, or
+middle), the program specified in the C<matcher.launcher> resource
+(default, the C<urlLauncher> resource, C<sensible-browser>) will be started
+with the matched text as first argument.  The default configuration is
+suitable for matching URLs and launching a web browser, like the
+former "mark-urls" extension.
+
+The default pattern to match URLs can be overridden with the
+C<matcher.pattern.0> resource, and additional patterns can be specified
+with numbered patterns, in a manner similar to the "selection" extension.
+The launcher can also be overridden on a per-pattern basis.
+
+It is possible to activate the most recently seen match or a list of matches
+from the keyboard.  Simply bind a keysym to "perl:matcher:last" or
+"perl:matcher:list" as seen in the example below.
+
+Example configuration:
+
+    URxvt.perl-ext:           default,matcher
+    URxvt.url-launcher:       sensible-browser
+    URxvt.keysym.C-Delete:    perl:matcher:last
+    URxvt.keysym.M-Delete:    perl:matcher:list
+    URxvt.matcher.button:     1
+    URxvt.matcher.pattern.1:  \\bwww\\.[\\w-]+\\.[\\w./?&@#-]*[\\w/-]
+    URxvt.matcher.pattern.2:  \\B(/\\S+?):(\\d+)(?=:|$)
+    URxvt.matcher.launcher.2: gvim +$2 $1
+
+=cut
+
 my $url =
    qr{
       (?:https?://|ftp://|news://|mailto:|file://|\bwww\.)
-      [a-zA-Z0-9\-\@;\/?:&=%\$_.+!*\x27,~#]*
+      [\w\-\@;\/?:&=%\$.+!*\x27,~#]*
       (
-         \([a-zA-Z0-9\-\@;\/?:&=%\$_.+!*\x27,~#]*\)| # Allow a pair of matched parentheses
-         [a-zA-Z0-9\-\@;\/?:&=%\$_+*~]  # exclude some trailing characters (heuristic)
+         \([\w\-\@;\/?:&=%\$.+!*\x27,~#]*\)| # Allow a pair of matched parentheses
+         [\w\-\@;\/?:&=%\$+*~]  # exclude some trailing characters (heuristic)
       )+
    }x;
 
@@ -124,8 +167,7 @@ sub most_recent {
 }
 
 sub my_resource {
-   my $self = shift;
-   $self->x_resource ("$self->{name}.$_[0]");
+   $_[0]->x_resource ("%.$_[1]")
 }
 
 # turn a rendition spec in the resource into a sub that implements it on $_
@@ -146,18 +188,14 @@ sub parse_rend {
 sub on_start {
    my ($self) = @_;
 
-   ($self->{name} = __PACKAGE__) =~ s/.*:://;
-   $self->{name} =~ tr/_/-/;
-   $self->{launcher} = $self->my_resource("launcher") ||
-                      $self->x_resource("urlLauncher") ||
-                      "sensible-browser";
+   $self->{launcher} = $self->my_resource ("launcher") || $self->x_resource("url-launcher") || "sensible-browser";
 
    $self->{urls} = [];
    $self->{showing} = 0;
    $self->{button}  = 2;
    $self->{state}   = 0;
-   if($self->{argv}[0] || $self->my_resource("button")) {
-      my @mods = split('', $self->{argv}[0] || $self->my_resource("button"));
+   if($self->{argv}[0] || $self->my_resource ("button")) {
+      my @mods = split '', $self->{argv}[0] || $self->my_resource ("button");
       for my $mod (@mods) {
          if($mod =~ /^\d+$/) {
             $self->{button} = $mod;
@@ -168,19 +206,19 @@ sub on_start {
          } elsif($mod eq "M") {
             $self->{state} |= $self->ModMetaMask;
          } elsif($mod ne "-" && $mod ne " ") {
-            warn("$mod is invalid in $self->{name}<$self->{argv}[0]>\n");
+            warn("$mod is invalid in $self->{_name}<$self->{argv}[0]>\n");
          }
       }
    }
 
    my @defaults = ($url);
    my @matchers;
-   for (my $idx = 0; defined (my $res = $self->my_resource("pattern.$idx") || $defaults[$idx]); $idx++) {
+   for (my $idx = 0; defined (my $res = $self->my_resource ("pattern.$idx") || $defaults[$idx]); $idx++) {
       $res = $self->locale_decode ($res);
       utf8::encode $res;
-      my $launcher = $self->my_resource("launcher.$idx");
-      $launcher =~ s/\$&|\$\{&\}/\${0}/g if ($launcher);
-      my $rend = $self->parse_rend($self->my_resource("rend.$idx"));
+      my $launcher = $self->my_resource ("launcher.$idx");
+      $launcher =~ s/\$&|\$\{&\}/\${0}/g if $launcher;
+      my $rend = $self->parse_rend($self->my_resource ("rend.$idx"));
       unshift @matchers, [qr($res)x,$launcher,$rend];
    }
    $self->{matchers} = \@matchers;

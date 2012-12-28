@@ -1,5 +1,4 @@
 // all supported hooks
-
   def (INIT)
   def (DESTROY)
   def (RESET)
@@ -45,6 +44,9 @@
   def (WM_PROTOCOLS)
   def (PROPERTY_NOTIFY)
   def (RESIZE_ALL_WINDOWS)
+  def (SIZE_CHANGE)
+  def (POSITION_CHANGE)
+  def (ROOTPMAP_CHANGE)
 
   def (XIM_PREEDIT_START)
   def (XIM_PREEDIT_DONE)

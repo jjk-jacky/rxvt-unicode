@@ -194,7 +194,7 @@ optList[] = {
               STRG (Rs_color + Color_pointer_fg, "pointerColor", "pr", "color", "pointer color"),
               STRG (Rs_color + Color_pointer_bg, "pointerColor2", "pr2", "color", "pointer bg color"),
               STRG (Rs_color + Color_border, "borderColor", "bd", "color", "border color"),
-#ifdef BG_IMAGE_FROM_FILE
+#if BG_IMAGE_FROM_FILE
               RSTRG (Rs_path, "path", "search path"),
               STRG (Rs_backgroundPixmap, "backgroundPixmap", "pixmap", "file[;geom]", "background pixmap"),
 # if ENABLE_EWMH
@@ -209,7 +209,7 @@ optList[] = {
               STRG (Rs_boldItalicFont, "boldItalicFont", "fbi", "fontname", "bold italic font"),
               BOOL (Rs_intensityStyles, "intensityStyles", "is", Opt_intensityStyles, 0, "font styles imply intensity changes"),
 #endif
-#ifdef USE_XIM
+#if USE_XIM
               STRG (Rs_inputMethod, "inputMethod", "im", "name", "name of input method"),
               STRG (Rs_preeditType, "preeditType", "pt", "style", "input style: style = OverTheSpot|OffTheSpot|Root"),
               STRG (Rs_imLocale, "imLocale", "imlocale", "string", "locale to use for input method"),
@@ -224,10 +224,11 @@ optList[] = {
               STRG (Rs_embed, NULL, "embed", "windowid", "window id to embed terminal in"),
 #endif
 #if XFT
-              STRG (Rs_depth, "depth", "depth", "number", "depth of visual to request"),
               BOOL (Rs_buffered, "buffered", NULL, Opt_buffered, 0, NULL),
 #endif
 #if ENABLE_FRILLS
+              STRG (Rs_depth, "depth", "depth", "number", "depth of visual to request"),
+              STRG (Rs_visual, "visual", "visual", "number", "visual id to request"),
               RSTRG (Rs_transient_for, "transient-for", "windowid"),
               BOOL (Rs_override_redirect, "override-redirect", "override-redirect", Opt_override_redirect, 0, "set override-redirect on the terminal window"),
               STRG (Rs_pty_fd, NULL, "pty-fd", "fileno", "file descriptor of pty to use"),
@@ -271,9 +272,6 @@ optList[] = {
 #if ISO_14755
               BOOL (Rs_iso14755, "iso14755", NULL, Opt_iso14755, 0, NULL),
               BOOL (Rs_iso14755_52, "iso14755_52", NULL, Opt_iso14755_52, 0, NULL),
-#endif
-#ifdef HAVE_AFTERIMAGE
-              STRG (Rs_blendtype, "blendType", "blt", "string", "background image blending type - alpha, tint, etc..."),
 #endif
 #ifndef NO_RESOURCES
               RINFO ("xrm", "string"),
@@ -338,9 +336,6 @@ static const char optionsstring[] = "options: "
                                     "transparent,"
                                     "tint,"
 #endif
-#if HAVE_AFTERIMAGE
-                                    "afterimage,"
-#endif
 #if HAVE_PIXBUF
                                     "pixbuf,"
 #endif
@@ -392,7 +387,7 @@ static const char optionsstring[] = "options: "
 #endif
                                     "\nUsage: ";		/* Usage */
 
-#define INDENT 18
+#define INDENT 28
 
 const char rxvt_term::resval_undef [] = "<undef>";
 const char rxvt_term::resval_on []    = "on";
@@ -400,8 +395,8 @@ const char rxvt_term::resval_off []   = "off";
 
 /*{{{ usage: */
 /*----------------------------------------------------------------------*/
-static void
-rxvt_usage (int type)
+void
+rxvt_term::rxvt_usage (int type)
 {
   unsigned int i, col;
 
@@ -419,9 +414,11 @@ rxvt_usage (int type)
 
               if (optList[i].arg)
                 len = strlen (optList[i].arg) + 1;
+
               assert (optList[i].opt != NULL);
               len += 4 + strlen (optList[i].opt) + (optList_isBool (i) ? 2 : 0);
               col += len;
+
               if (col > 79)
                 {
                   /* assume regular width */
@@ -430,6 +427,7 @@ rxvt_usage (int type)
                 }
 
               rxvt_log (" [-%s%s", (optList_isBool (i) ? "/+" : ""), optList[i].opt);
+
               if (optList[i].arg)
                 rxvt_log (" %s]", optList[i].arg);
               else
@@ -452,6 +450,12 @@ rxvt_usage (int type)
                          (optList_isBool (i) ? "turn on/off " : ""),
                          optList[i].desc);
             }
+
+#if ENABLE_PERL
+        rxvt_perl.init (this);
+        rxvt_perl.usage (this, 1);
+#endif
+
         rxvt_log ("\n  --help to list long-options");
         break;
 
@@ -463,8 +467,14 @@ rxvt_usage (int type)
           if (optList[i].kw != NULL)
             rxvt_log ("  %s: %*s%s\n",
                     optList[i].kw,
-                    (INDENT - strlen (optList[i].kw)), "", /* XXX */
+                    (INDENT + 2 - strlen (optList[i].kw)), "", /* XXX */
                     (optList_isBool (i) ? "boolean" : optList[i].arg));
+
+#if ENABLE_PERL
+        rxvt_perl.init (this);
+        rxvt_perl.usage (this, 2);
+#endif
+
         rxvt_log ("\n  -help to list options");
         break;
     }
@@ -539,7 +549,7 @@ rxvt_term::get_options (int argc, const char *const *argv)
 
               if (optList[entry].doff != -1)
                 {
-                  if (flag && i+1 == argc)
+                  if (flag && i + 1 == argc)
                     rxvt_fatal ("option '%s' requires an argument, aborting.\n", argv [i]);
 
                   rs[optList[entry].doff] = flag ? argv[++i] : resval_undef;
@@ -557,14 +567,14 @@ rxvt_term::get_options (int argc, const char *const *argv)
 #ifndef NO_RESOURCES
       else if (!strcmp (opt, "xrm"))
         {
-          if (i+1 < argc)
+          if (i + 1 < argc)
             XrmPutLineResource (&option_db, argv[++i]);
         }
 #endif
 #ifdef KEYSYM_RESOURCE
       else if (!strncmp (opt, "keysym.", sizeof ("keysym.") - 1))
         {
-          if (i+1 < argc)
+          if (i + 1 < argc)
             {
               char *res = rxvt_temp_buf<char> (strlen (opt) + strlen (argv[++i]) + 6);
               sprintf (res, "*.%s: %s\n", opt, argv[i]);
@@ -574,15 +584,36 @@ rxvt_term::get_options (int argc, const char *const *argv)
 #endif
       else if (!strcmp (opt, "e"))
         {
-          if (i+1 == argc)
-            rxvt_fatal ("option '-e' requires an argument, aborting.\n");
+          if (i + 1 < argc)
+            return (const char **)argv + i + 1;
 
-          return (const char **)argv + i + 1;
+          rxvt_warn ("option '-e' requires an argument, aborting.\n");
+          bad_option = 1;
         }
       else
         {
-          bad_option = 1;
-          rxvt_warn ("\"%s\": unknown or malformed option.\n", opt);
+#if ENABLE_PERL
+          rxvt_perl.init (this);
+
+          if (int flags = rxvt_perl.parse_resource (this, opt, true, longopt, flag, argv [i + 1]))
+            {
+              if (flags & rxvt_perl.RESOURCE_ARG)
+                {
+                  if (i + 1 == argc)
+                    {
+                      rxvt_warn ("option '%s' requires an argument.\n", argv [i]);
+                      bad_option = 1;
+                    }
+                  else
+                    ++i;
+                }
+            }
+          else
+#endif
+            {
+              rxvt_warn ("\"%s\": unknown or malformed option.\n", opt);
+              bad_option = 1;
+            }
         }
     }
 
@@ -610,15 +641,16 @@ rxvt_define_key (XrmDatabase *database ecb_unused,
                  XrmQuarkList quarks,
                  XrmRepresentation *type ecb_unused,
                  XrmValue *value,
-                 XPointer closure ecb_unused)
+                 XPointer closure)
 {
+  rxvt_term *term = (rxvt_term *)closure;
   int last;
 
   for (last = 0; quarks[last] != NULLQUARK; last++)	/* look for last quark in list */
     ;
 
   last--;
-  GET_R->parse_keysym (XrmQuarkToString (quarks[last]), (char *)value->addr);//D//TODO
+  term->parse_keysym (XrmQuarkToString (quarks[last]), (char *)value->addr);
   return False;
 }
 
@@ -713,6 +745,7 @@ rxvt_term::parse_keysym (const char *str, const char *arg)
   wchar_t *ws = rxvt_mbstowcs (arg);
   if (!HOOK_INVOKE ((this, HOOK_REGISTER_COMMAND, DT_INT, sym, DT_INT, state, DT_WCS_LEN, ws, wcslen (ws), DT_END)))
     keyboard->register_user_translation (sym, state, ws);
+
   free (ws);
   return 1;
 }
@@ -819,12 +852,12 @@ rxvt_term::extract_keysym_resources ()
   class_prefix[2] = NULLQUARK;
   /* XXX: Need to check sizeof (rxvt_t) == sizeof (XPointer) */
   XrmEnumerateDatabase (database, name_prefix, class_prefix,
-                        XrmEnumOneLevel, rxvt_define_key, NULL);
+                        XrmEnumOneLevel, rxvt_define_key, (XPointer)this);
 #   ifdef RESFALLBACK
   name_prefix[0] = class_prefix[0] = XrmStringToName (RESFALLBACK);
   /* XXX: Need to check sizeof (rxvt_t) == sizeof (XPointer) */
   XrmEnumerateDatabase (database, name_prefix, class_prefix,
-                        XrmEnumOneLevel, rxvt_define_key, NULL);
+                        XrmEnumOneLevel, rxvt_define_key, (XPointer)this);
 #   endif
 #  endif
 

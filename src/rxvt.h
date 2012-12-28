@@ -47,6 +47,7 @@ typedef  int32_t tlen_t_; // specifically for use in the line_t structure
 
 #if defined (ISO_14755) || defined (ENABLE_PERL)
 # define ENABLE_OVERLAY 1
+# undef NO_RESOURCES
 #endif
 
 #if ENABLE_PERL
@@ -72,13 +73,7 @@ typedef  int32_t tlen_t_; // specifically for use in the line_t structure
 #include <X11/keysymdef.h>
 #include <X11/Xatom.h>
 
-#ifdef HAVE_AFTERIMAGE
-# include <afterimage.h>
-# undef min
-# undef max
-#endif
-
-#ifdef HAVE_PIXBUF
+#if HAVE_PIXBUF
 # include <gdk-pixbuf/gdk-pixbuf.h>
 #endif
 
@@ -86,13 +81,14 @@ typedef  int32_t tlen_t_; // specifically for use in the line_t structure
 # define HAVE_BG_PIXMAP 1
 #endif
 
+#include <ecb.h>
 #include "encoding.h"
 #include "rxvtutil.h"
 #include "rxvtfont.h"
 #include "rxvttoolkit.h"
+#include "rxvtimg.h"
 #include "scrollbar.h"
 #include "ev_cpp.h"
-#include "salloc.h"
 #include "libptytty.h"
 
 #include "rxvtperl.h"
@@ -155,8 +151,8 @@ const char *     rxvt_basename                    (const char *str) NOTHROW;
 void             rxvt_vlog                        (const char *fmt, va_list arg_ptr) NOTHROW;
 void             rxvt_log                         (const char *fmt,...) NOTHROW;
 void             rxvt_warn                        (const char *fmt,...) NOTHROW;
-void             rxvt_fatal                       (const char *fmt, ...) THROW ((class rxvt_failure_exception)) ecb_noreturn;
-void             rxvt_exit_failure                () THROW ((class rxvt_failure_exception)) ecb_noreturn;
+void             rxvt_fatal                       (const char *fmt, ...) THROW ((class rxvt_failure_exception)) ecb_noreturn ecb_cold;
+void             rxvt_exit_failure                () THROW ((class rxvt_failure_exception)) ecb_noreturn ecb_cold;
 
 char           * rxvt_strtrim                     (char *str) NOTHROW;
 char          ** rxvt_strsplit                    (char delim, const char *str) NOTHROW;
@@ -216,6 +212,85 @@ struct localise_env
   }
 };
 
+#ifdef HAVE_BG_PIXMAP
+struct image_effects
+{
+  bool tint_set;
+  rxvt_color tint;
+  int shade;
+  int h_blurRadius, v_blurRadius;
+
+  image_effects ()
+  {
+    tint_set     =
+    h_blurRadius =
+    v_blurRadius = 0;
+    shade = 100;
+  }
+
+  bool need_tint ()
+  {
+    return shade != 100 || tint_set;
+  }
+
+  bool need_blur ()
+  {
+    return h_blurRadius && v_blurRadius;
+  }
+
+  bool set_tint (const rxvt_color &new_tint);
+  bool set_shade (const char *shade_str);
+  bool set_blur (const char *geom);
+};
+
+# if BG_IMAGE_FROM_FILE
+enum {
+  IM_IS_SIZE_SENSITIVE = 1 << 1,
+  IM_KEEP_ASPECT       = 1 << 2,
+  IM_ROOT_ALIGN        = 1 << 3,
+  IM_TILE              = 1 << 4,
+  IM_GEOMETRY_FLAGS    = IM_KEEP_ASPECT | IM_ROOT_ALIGN | IM_TILE,
+};
+
+enum {
+  noScale = 0,
+  windowScale = 100,
+  defaultScale = windowScale,
+  centerAlign = 50,
+  defaultAlign = centerAlign,
+};
+
+struct rxvt_image : image_effects
+{
+  unsigned short alpha;
+  uint8_t flags;
+  unsigned int h_scale, v_scale; /* percents of the window size */
+  int h_align, v_align;          /* percents of the window size:
+                                    0 - left align, 50 - center, 100 - right */
+
+  bool is_size_sensitive ()
+  {
+    return (!(flags & IM_TILE)
+            || h_scale || v_scale
+            || (!(flags & IM_ROOT_ALIGN) && (h_align || v_align)));
+  }
+
+  rxvt_img *img;
+
+  void destroy ()
+  {
+    delete img;
+    img = 0;
+  }
+
+  rxvt_image ();
+  void set_file_geometry (rxvt_screen *s, const char *file);
+  void set_file (rxvt_screen *s, const char *file);
+  bool set_geometry (const char *geom, bool update = false);
+};
+# endif
+#endif
+
 /*
  *****************************************************************************
  * STRUCTURES AND TYPEDEFS
@@ -267,7 +342,7 @@ struct mouse_event
 
 /* COLORTERM, TERM environment variables */
 #define COLORTERMENV    "rxvt"
-#ifdef BG_IMAGE_FROM_FILE
+#if BG_IMAGE_FROM_FILE
 # define COLORTERMENVFULL COLORTERMENV "-xpm"
 #else
 # define COLORTERMENVFULL COLORTERMENV
@@ -704,6 +779,16 @@ struct line_t
    tlen_t_ l; // length of each text line
    uint32_t f; // flags
 
+   bool valid ()
+   {
+     return l >= 0;
+   }
+
+   void alloc ()
+   {
+     l = 0;
+   }
+
    bool is_longer ()
    {
      return f & LINE_LONGER;
@@ -777,6 +862,9 @@ struct mbstate
 struct compose_char
 {
   unicode_t c1, c2; // any chars != NOCHAR are valid
+  #if __cplusplus >= 201103L || ECB_GCC_VERSION(4,4)
+  compose_char () = default;
+  #endif
   compose_char (unicode_t c1, unicode_t c2)
   : c1(c1), c2(c2)
   { }
@@ -980,6 +1068,7 @@ struct rxvt_vars : TermWin_t
   XSizeHints      szHint;
   rxvt_color     *pix_colors;
   Cursor          TermWin_cursor;       /* cursor for vt window */
+
   line_t         *row_buf;      // all lines, scrollback + terminal, circular
   line_t         *drawn_buf;    // text on screen
   line_t         *swap_buf;     // lines for swap buffer
@@ -1090,112 +1179,47 @@ struct rxvt_term : zero_initialized, rxvt_vars, rxvt_screen
   void bg_destroy ();
 
   enum {
-    //subset returned by make_transparency_pixmap
-    BG_IS_VALID          = 1 <<  0,
-    BG_NEEDS_TINT        = 1 <<  1,
-    BG_NEEDS_BLUR        = 1 <<  2,
+    BG_IS_VALID          = 1 << 0,
 
-    BG_EFFECTS_FLAGS     = BG_NEEDS_TINT | BG_NEEDS_BLUR,
-
-    BG_KEEP_ASPECT       = 1 <<  3,
-    BG_ROOT_ALIGN        = 1 <<  4,
-    BG_TILE              = 1 << 14,
-    BG_GEOMETRY_FLAGS    = BG_KEEP_ASPECT | BG_ROOT_ALIGN | BG_TILE,
-
-    BG_TINT_SET          = 1 <<  5,
-    BG_TINT_BITAND       = 1 <<  6,
-    BG_TINT_FLAGS        = BG_NEEDS_TINT | BG_TINT_BITAND,
-
-    BG_HAS_RENDER        = 1 <<  7,
-    BG_HAS_RENDER_CONV   = 1 <<  8,
-    BG_CLIENT_RENDER     = 1 <<  9,
-
-    BG_IS_TRANSPARENT    = 1 << 10,
-    BG_NEEDS_REFRESH     = 1 << 11,
-    BG_IS_SIZE_SENSITIVE = 1 << 12,
-    BG_IS_FROM_FILE      = 1 << 13,
+    BG_IS_TRANSPARENT    = 1 << 1,
+    BG_NEEDS_REFRESH     = 1 << 2,
+    BG_INHIBIT_RENDER    = 1 << 3,
   };
 
-  unsigned int bg_flags;
+  uint8_t bg_flags;
 
-# ifdef BG_IMAGE_FROM_FILE
-  void get_image_geometry (int image_width, int image_height, int &w, int &h, int &x, int &y);
-  bool render_image (unsigned long tr_flags);
+# if BG_IMAGE_FROM_FILE
+  rxvt_image fimage;
+  void get_image_geometry (rxvt_image &image, int &w, int &h, int &x, int &y);
+  bool render_image (rxvt_image &image);
+# endif
 
-  enum {
-    noScale = 0,
-    windowScale = 100,
-    defaultScale = windowScale,
-    centerAlign = 50,
-    defaultAlign = centerAlign,
-  };
+# if ENABLE_TRANSPARENCY
+  rxvt_img *root_img;
+  image_effects root_effects;
 
-  unsigned int h_scale, v_scale; /* percents of the window size */
-  int h_align, v_align;          /* percents of the window size:
-                                    0 - left align, 50 - center, 100 - right */
-
-  bool bg_set_geometry (const char *geom, bool update = false);
-  void bg_set_default_geometry ()
+  void bg_set_transparent ()
   {
-    h_scale = v_scale = defaultScale;
-    h_align = v_align = defaultAlign;
+    bg_flags |= BG_IS_TRANSPARENT;
   }
-
-  bool bg_set_file (const char *file);
-# endif
-
-# ifdef ENABLE_TRANSPARENCY
-  Pixmap      root_pixmap; /* current root pixmap set */
-  rxvt_color  tint;
-  int         shade;
-  int         h_blurRadius, v_blurRadius;
-
-  bool bg_set_transparent ();
   void bg_set_root_pixmap ();
-  void set_tint_shade_flags ();
-  bool bg_set_tint (rxvt_color &new_tint);
-  bool bg_set_shade (const char *shade_str);
-  bool bg_set_blur (const char *geom);
-
-  bool blur_pixmap (Pixmap pixmap, Visual *visual, int width, int height, int depth);
-  bool tint_pixmap (Pixmap pixmap, Visual *visual, int width, int height);
-  void tint_ximage (Visual *visual, XImage *ximage);
-  unsigned long make_transparency_pixmap ();
+  bool render_root_image ();
 # endif
+
+  void tint_image (rxvt_img *img, rxvt_color &tint, bool tint_set, int shade);
 
   ev_tstamp bg_valid_since;
 
-  Pixmap bg_pixmap;
-  unsigned int bg_pmap_width, bg_pmap_height;
+  rxvt_img *bg_img;
 
-  int target_x;
-  int target_y;
-  bool bg_set_position (int x, int y);
   bool bg_window_size_sensitive ();
   bool bg_window_position_sensitive ();
 
-  bool bg_render ();
+  void bg_render ();
   void bg_invalidate ()
   {
     bg_flags &= ~BG_IS_VALID;
   }
-#endif
-#ifdef HAVE_AFTERIMAGE
-  ASImage        *original_asim;
-  ASVisual       *asv;
-  ASImageManager *asimman;
-
-  void init_asv ()
-  {
-    if (!asv)
-      asv = create_asvisual_for_id (dpy, display->screen, depth, XVisualIDFromVisual (visual), cmap, NULL);
-  }
-#endif
-#ifdef HAVE_PIXBUF
-  GdkPixbuf *pixbuf;
-  bool pixbuf_to_pixmap (GdkPixbuf *pixbuf, Pixmap pixmap, GC gc,
-                         int src_x, int src_y, int dst_x, int dst_y,
-                         unsigned int width, unsigned int height);
 #endif
 
 #if ENABLE_OVERLAY
@@ -1212,6 +1236,8 @@ struct rxvt_term : zero_initialized, rxvt_vars, rxvt_screen
 #endif
 
   vector<void *> allocated;           // free these memory blocks with free()
+
+  int            parent_x, parent_y; // parent window position relative to root, only updated on demand
 
   char           *locale;
   char            charsets[4];
@@ -1233,8 +1259,10 @@ struct rxvt_term : zero_initialized, rxvt_vars, rxvt_screen
 
   ptytty         *pty;
 
-  rxvt_salloc    *talloc;             // text line allocator
-  rxvt_salloc    *ralloc;             // rend line allocator
+  // chunk contains all line_t's as well as rend_t and text_t buffers
+  // for drawn_buf, swap_buf and row_buf, in this order
+  void           *chunk;
+  size_t          chunk_size;
 
   static vector<rxvt_term *> termlist; // a vector of all running rxvt_term's
 
@@ -1243,7 +1271,7 @@ struct rxvt_term : zero_initialized, rxvt_vars, rxvt_screen
   unicode_t iso14755buf;
   void commit_iso14755 ();
 # if ISO_14755
-  void iso14755_51 (unicode_t ch, rend_t r = DEFAULT_RSTYLE, int x = 0, int y = -1);
+  void iso14755_51 (unicode_t ch, rend_t r = DEFAULT_RSTYLE, int x = 0, int y = -1, int y2 = -1);
   void iso14755_54 (int x, int y);
 # endif
 #endif
@@ -1281,6 +1309,7 @@ struct rxvt_term : zero_initialized, rxvt_vars, rxvt_screen
   void pty_cb (ev::io &w, int revents); ev::io pty_ev;
 
 #ifdef CURSOR_BLINK
+  void cursor_blink_reset ();
   void cursor_blink_cb (ev::timer &w, int revents); ev::timer cursor_blink_ev;
 #endif
 #ifdef TEXT_BLINK
@@ -1413,37 +1442,15 @@ struct rxvt_term : zero_initialized, rxvt_vars, rxvt_screen
   void alias_color (int dst, int src);
   void set_widthheight (unsigned int newwidth, unsigned int newheight);
   void get_window_origin (int &x, int &y);
-  Pixmap get_pixmap_property (Atom property);
 
   // screen.C
 
-  void lalloc (line_t &l) const
+  bool option (uint8_t opt) const NOTHROW
   {
-    l.t = (text_t *)talloc->alloc ();
-    l.r = (rend_t *)ralloc->alloc ();
+    return options[opt >> 3] & (1 << (opt & 7));
   }
 
-#if 0
-  void lfree (line_t &l)
-  {
-    talloc->free (l.t);
-    ralloc->free (l.r);
-  }
-#endif
-
-  void lresize (line_t &l) const
-  {
-    if (!l.t)
-      return;
-
-    l.t = (text_t *)talloc->alloc (l.t, prev_ncol * sizeof (text_t));
-    l.r = (rend_t *)ralloc->alloc (l.r, prev_ncol * sizeof (rend_t));
-
-    l.l = min (l.l, ncol);
-
-    if (ncol > prev_ncol)
-      scr_blank_line (l, prev_ncol, ncol - prev_ncol, DEFAULT_RSTYLE);
-  }
+  void set_option (uint8_t opt, bool set = true) NOTHROW;
 
   int fgcolor_of (rend_t r) const NOTHROW
   {
@@ -1473,16 +1480,10 @@ struct rxvt_term : zero_initialized, rxvt_vars, rxvt_screen
     return base;
   }
 
-  bool option (uint8_t opt) const NOTHROW
-  {
-    return options[opt >> 3] & (1 << (opt & 7));
-  }
-
-  void set_option (uint8_t opt, bool set = true) NOTHROW;
-
   // modifies first argument(!)
   void tt_paste (char *data, unsigned int len) NOTHROW;
   void paste (char *data, unsigned int len) NOTHROW;
+  void scr_alloc () NOTHROW;
   void scr_blank_line (line_t &l, unsigned int col, unsigned int width, rend_t efs) const NOTHROW;
   void scr_blank_screen_mem (line_t &l, rend_t efs) const NOTHROW;
   void scr_kill_char (line_t &l, int col) const NOTHROW;
@@ -1559,6 +1560,7 @@ struct rxvt_term : zero_initialized, rxvt_vars, rxvt_screen
   void selection_rotate (int x, int y) NOTHROW;
 
   // xdefaults.C
+  void rxvt_usage (int type);
   const char **get_options (int argc, const char *const *argv);
   int parse_keysym (const char *str, const char *arg);
   const char *x_resource (const char *name);

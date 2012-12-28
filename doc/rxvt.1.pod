@@ -100,13 +100,18 @@ display specified by the B<DISPLAY> environment variable is used.
 
 =item B<-depth> I<bitdepth>
 
-Compile I<xft>: Attempt to find a visual with the given bit depth;
+Compile I<frills>: Attempt to find a visual with the given bit depth;
 resource B<depth>.
 
 [Please note that many X servers (and libXft) are buggy with
 respect to C<-depth 32> and/or alpha channels, and will cause all sorts
 of graphical corruption. This is harmless, but we can't do anything about
 this, so watch out]
+
+=item B<-visual> I<visualID>
+
+Compile I<frills>: Use the given visual (see e.g. C<xdpyinfo> for possible
+visual ids).
 
 =item B<-geometry> I<geom>
 
@@ -124,13 +129,6 @@ Turn on/off jump scrolling (allow multiple lines per refresh); resource B<jumpSc
 
 Turn on/off skip scrolling (allow multiple screens per refresh); resource B<skipScroll>.
 
-=item B<-tr>|B<+tr>
-
-Turn on/off pseudo-transparency by using the root pixmap as background; resource B<transparent>.
-
-B<-ip> is still accepted as an obsolete alias but will be removed in
-future versions.
-
 =item B<-fade> I<number>
 
 Fade the text by the given percentage when focus is lost. Small values
@@ -142,39 +140,9 @@ colour; resource B<fading>.
 Fade to this colour when fading is used (see B<-fade>). The default colour
 is opaque black. resource B<fadeColor>.
 
-=item B<-tint> I<colour>
-
-Tint the transparent background with the given colour;
-resource I<tintColor>.
-
-=item B<-sh> I<number>
-
-Darken (0 .. 99) or lighten (101 .. 200) the transparent background.
-A value of 100 means no shading; resource I<shading>.
-
-=item B<-blt> I<string>
-
-Specify background blending type. If background pixmap is specified
-at the same time as transparency - such pixmap will be blended over
-the transparent background, using the method specified. Supported values are:
-B<add>, B<alphablend>, B<allanon> - colour values averaging, B<colorize>,
-B<darken>, B<diff>, B<dissipate>, B<hue>, B<lighten>, B<overlay>,
-B<saturate>, B<screen>, B<sub>, B<tint>, B<value>. The default is
-alpha-blending. Compile I<afterimage>; resource I<blendType>.
-
-=item B<-blr> I<HxV>
-
-Apply Gaussian Blur with the specified radii to the transparent
-background. If a single number is specified, the vertical and
-horizontal radii are considered to be the same. Setting one of the
-radii to 1 and the other to a large number creates interesting effects
-on some backgrounds. The maximum radius value is 128. An horizontal or
-vertical radius of 0 disables blurring;
-resource I<blurRadius>.
-
 =item B<-icon> I<file>
 
-Compile I<afterimage> or I<pixbuf>: Use the specified image as application icon. This
+Compile I<pixbuf>: Use the specified image as application icon. This
 is used by many window managers, taskbars and pagers to represent the
 application window; resource I<iconFile>.
 
@@ -185,13 +153,6 @@ Window background colour; resource B<background>.
 =item B<-fg> I<colour>
 
 Window foreground colour; resource B<foreground>.
-
-=item B<-pixmap> I<file[;oplist]>
-
-Compile I<afterimage> or I<pixbuf>: Specify image file for the background and also
-optionally specify a list of operations to modify it. Note you may need to
-add quotes to avoid special shell interpretation of the C<;> in the
-command-line; for more details see resource B<backgroundPixmap>.
 
 =item B<-cr> I<colour>
 
@@ -690,13 +651,6 @@ B<False>: specify that everything is to be displayed, even
 if the refresh is too fast for the human eye to read anything (or the
 monitor to display anything); option B<+ss>.
 
-=item B<transparent:> I<boolean>
-
-Turn on/off pseudo-transparency by using the root pixmap as background.
-
-B<inheritPixmap> is still accepted as an obsolete alias but will be removed in
-future versions.
-
 =item B<fading:> I<number>
 
 Fade the text by the given percentage when focus is lost; option B<-fade>.
@@ -705,28 +659,6 @@ Fade the text by the given percentage when focus is lost; option B<-fade>.
 
 Fade to this colour, when fading is used (see B<fading:>). The default
 colour is black; option B<-fadecolor>.
-
-=item B<tintColor:> I<colour>
-
-Tint the transparent background with the given colour. If the RENDER
-extension is not available only black, red, green, yellow, blue,
-magenta, cyan and white tints can be performed server-side. Note that
-a black tint yields a completely black image while a white tint yields
-the image unchanged; option B<-tint>.
-
-=item B<shading:> I<number>
-
-Darken (0 .. 99) or lighten (101 .. 200) the transparent background.
-A value of 100 means no shading; option B<-sh>.
-
-=item B<blendType:> I<string>
-
-Specify background blending type; option B<-blt>.
-
-=item B<blurRadius:> I<number>
-
-Apply gaussian blur with the specified radius to the transparent
-background; option B<-blr>.
 
 =item B<iconFile:> I<file>
 
@@ -745,77 +677,6 @@ Use the specified colour for the scrollbar's trough area [default
 
 The colour of the border around the text area and between the scrollbar
 and the text.
-
-=item B<backgroundPixmap:> I<file[;oplist]>
-
-Use the specified image file for the background and also
-optionally specify a colon separated list of operations to modify it.
-Supported operations are:
-
-=over 4
-
-=item B<WxH+X+Y>
-
-sets scale and position. B<"W" / "H"> specify the horizontal/vertical
-scale (percent), and B<"X" / "Y"> locate the image centre (percent). A
-scale of 0 disables scaling. The maximum permitted scale is 1000.
-
-=item B<op=tile>
-
-enables tiling
-
-=item B<op=keep-aspect>
-
-maintain the image aspect ratio when scaling
-
-=item B<op=root-align>
-
-use the position of the terminal window relative to the root window as
-the image offset, simulating a root window background
-
-=back
-
-The default scale and position setting is C<100x100+50+50>.
-Alternatively, a predefined set of templates can be used to achieve
-the most common setups:
-
-=over 4
-
-=item B<style=tiled>
-
-the image is tiled with no scaling. Equivalent to 0x0+0+0:op=tile
-
-=item B<style=aspect-stretched>
-
-the image is scaled to fill the whole window maintaining the aspect
-ratio and centered. Equivalent to 100x100+50+50:op=keep-aspect
-
-=item B<style=stretched>
-
-the image is scaled to fill the whole window. Equivalent to 100x100
-
-=item B<style=centered>
-
-the image is centered with no scaling. Equivalent to 0x0+50+50
-
-=item B<style=root-tiled>
-
-the image is tiled with no scaling and using 'root' positioning.
-Equivalent to 0x0:op=tile:op=root-align
-
-=back
-
-If multiple templates are specified the last one wins. Note that a
-template overrides all the scale, position and operations settings.
-
-If used in conjunction with B<-tr> option, the specified pixmap will be
-blended over the transparent background using alpha-blending. If I<afterimage>
-support has been compiled in it is possible to choose other blending
-types with B<-blt "type"> option.
-
-=item B<path:> I<path>
-
-Specify the colon-delimited search path for finding background image files.
 
 =item B<font:> I<fontlist>
 
@@ -1303,9 +1164,9 @@ the @@RXVT_NAME@@perl(3) manpage.
 =item B<perl-lib>: I<path>
 
 Colon-separated list of additional directories that hold extension
-scripts. When looking for perl extensions, @@RXVT_NAME@@ will first
-look in these directories, then in $HOME/.urxvt/ext and lastly in
-F<@@RXVT_LIBDIR@@/urxvt/perl/>.
+scripts. When looking for perl extensions, @@RXVT_NAME@@ will first look
+in these directories, then in C<$URXVT_PERL_LIB>, F<$HOME/.urxvt/ext> and
+lastly in F<@@RXVT_LIBDIR@@/urxvt/perl/>.
 
 See the @@RXVT_NAME@@perl(3) manpage.
 
@@ -1324,7 +1185,7 @@ for details.
 Sets the hotkey that starts the incremental scrollback buffer search
 (default: C<M-s>).
 
-=item B<urlLauncher>: I<string>
+=item B<url-launcher>: I<string>
 
 Specifies the program to be started with a URL argument. Used by the
 C<selection-popup> and C<matcher> perl extensions.
@@ -1345,6 +1206,116 @@ Turn on/off ISO 14755 (default enabled).
 =item B<iso14755_52:> I<boolean>
 
 Turn on/off ISO 14755 5.2 mode (default enabled).
+
+=head1 BACKGROUND IMAGE OPTIONS AND RESOURCES
+
+=item B<-pixmap> I<file[;oplist]>
+
+=item B<backgroundPixmap:> I<file[;oplist]>
+
+Compile I<pixbuf>: Use the specified image file as the window's
+background and also optionally specify a colon separated list of
+operations to modify it. Note that you may need to quote the C<;>
+character when using the command line option, as C<;> is usually a
+metacharacter in shells. Supported operations are:
+
+=over 4
+
+=item B<WxH+X+Y>
+
+sets scale and position. B<"W" / "H"> specify the horizontal/vertical
+scale (percent), and B<"X" / "Y"> locate the image centre (percent). A
+scale of 0 disables scaling.
+
+=item B<op=tile>
+
+enables tiling
+
+=item B<op=keep-aspect>
+
+maintain the image aspect ratio when scaling
+
+=item B<op=root-align>
+
+use the position of the terminal window relative to the root window as
+the image offset, simulating a root window background
+
+=back
+
+The default scale and position setting is C<100x100+50+50>.
+Alternatively, a predefined set of templates can be used to achieve
+the most common setups:
+
+=over 4
+
+=item B<style=tiled>
+
+the image is tiled with no scaling. Equivalent to 0x0+0+0:op=tile
+
+=item B<style=aspect-stretched>
+
+the image is scaled to fill the whole window maintaining the aspect
+ratio and centered. Equivalent to 100x100+50+50:op=keep-aspect
+
+=item B<style=stretched>
+
+the image is scaled to fill the whole window. Equivalent to 100x100
+
+=item B<style=centered>
+
+the image is centered with no scaling. Equivalent to 0x0+50+50
+
+=item B<style=root-tiled>
+
+the image is tiled with no scaling and using 'root' positioning.
+Equivalent to 0x0:op=tile:op=root-align
+
+=back
+
+If multiple templates are specified the last one wins. Note that a
+template overrides all the scale, position and operations settings.
+
+If used in conjunction with pseudo-transparency, the specified pixmap
+will be blended over the transparent background using alpha-blending.
+
+=item B<-tr>|B<+tr>
+
+=item B<transparent:> I<boolean>
+
+Turn on/off pseudo-transparency by using the root pixmap as background.
+
+B<-ip> (B<inheritPixmap>) is still accepted as an obsolete alias but
+will be removed in future versions.
+
+=item B<-tint> I<colour>
+
+=item B<tintColor:> I<colour>
+
+Tint the transparent background with the given colour. Note that a
+black tint yields a completely black image while a white tint yields
+the image unchanged.
+
+=item B<-sh> I<number>
+
+=item B<shading:> I<number>
+
+Darken (0 .. 99) or lighten (101 .. 200) the transparent background.
+A value of 100 means no shading.
+
+=item B<-blr> I<HxV>
+
+=item B<blurRadius:> I<HxV>
+
+Apply gaussian blur with the specified radius to the transparent
+background. If a single number is specified, the vertical and
+horizontal radii are considered to be the same. Setting one of the
+radii to 1 and the other to a large number creates interesting effects
+on some backgrounds. The maximum radius value is 128. An horizontal or
+vertical radius of 0 disables blurring.
+
+=item B<path:> I<path>
+
+Specify the colon-delimited search path for finding background image files.
 
 =back
 
@@ -1655,12 +1626,22 @@ defaults to C<:0> if it doesn't exist.
 
 The shell to be used for command execution, defaults to C</bin/sh>.
 
-=item B<RXVT_SOCKET>
+=item B<RXVT_SOCKET> [I<sic>]
 
 The unix domain socket path used by @@RXVT_NAME@@c(1) and
 @@RXVT_NAME@@d(1).
 
 Default F<<< $HOME/.urxvt/urxvtd-I<< <nodename> >> >>>.
+
+=item B<URXVT_PERL_LIB>
+
+Additional F<:>-separated library search path for perl extensions. Will be
+searched after B<-perl-lib> but before F<~/.urxvt/ext> and the system library
+directory.
+
+=item B<URXVT_PERL_VERBOSITY>
+
+See L<@@RXVT_NAME@@perl>(3).
 
 =item B<HOME>
 
@@ -1691,7 +1672,8 @@ Colour names.
 
 =head1 SEE ALSO
 
-@@RXVT_NAME@@(7), @@RXVT_NAME@@c(1), @@RXVT_NAME@@d(1), xterm(1), sh(1), resize(1), X(1), pty(4), tty(4), utmp(5)
+@@RXVT_NAME@@(7), @@RXVT_NAME@@c(1), @@RXVT_NAME@@d(1), @@RXVT_NAME@@-extensions(1),
+@@RXVT_NAME@@perl(3), xterm(1), sh(1), resize(1), X(1), pty(4), tty(4), utmp(5)
 
 =head1 CURRENT PROJECT COORDINATOR
 

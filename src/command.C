@@ -6,7 +6,7 @@
  * Copyright (c) 1992      John Bovey, University of Kent at Canterbury <jdb@ukc.ac.uk>
  *				- original version
  * Copyright (c) 1994      Robert Nation <nation@rocket.sanders.lockheed.com>
- * 				- extensive modifications
+ *				- extensive modifications
  * Copyright (c) 1995      Garrett D'Amore <garrett@netcom.com>
  *				- vt100 printing
  * Copyright (c) 1995      Steven Hirsch <hirsch@emba.uvm.edu>
@@ -22,7 +22,7 @@
  *				  and Linux 1.2.x
  * Copyright (c) 1997,1998 Oezguer Kesim <kesim@math.fu-berlin.de>
  * Copyright (c) 1998-2001 Geoff Wing <gcw@pobox.com>
- * 				- extensive modifications
+ *				- extensive modifications
  * Copyright (c) 1998      Alfredo K. Kojima <kojima@windowmaker.org>
  * Copyright (c) 2001      Marius Gedminas
  *				- Ctrl/Mod4+Tab works like Meta+Tab (options)
@@ -133,7 +133,7 @@ static unsigned short iso14755_symtab[] = {
   0,
 };
 
-void
+void ecb_cold
 rxvt_term::iso14755_54 (int x, int y)
 {
   x = Pixel2Col (x);
@@ -151,7 +151,7 @@ rxvt_term::iso14755_54 (int x, int y)
 
       if (t != NOCHAR || !x)
         {
-          iso14755_51 (l.t[x], l.r[x], x, y);
+          iso14755_51 (l.t[x], l.r[x], x, y, view_start);
           iso14755buf = ISO_14755_54;
           break;
         }
@@ -160,8 +160,8 @@ rxvt_term::iso14755_54 (int x, int y)
     }
 }
 
-void
-rxvt_term::iso14755_51 (unicode_t ch, rend_t r, int x, int y)
+void ecb_cold
+rxvt_term::iso14755_51 (unicode_t ch, rend_t r, int x, int y, int y2)
 {
   rxvt_fontset *fs = FONTSET (r);
   wchar_t *chr, *alloc, ch2, **fname;
@@ -184,6 +184,9 @@ rxvt_term::iso14755_51 (unicode_t ch, rend_t r, int x, int y)
       len = 1;
     }
 
+  char rowcol[40];
+  snprintf (rowcol, sizeof rowcol, "col %d row %d @%d", x, y, y2);
+
   char attr[80]; // plenty
 
   sprintf (attr, "%08x = fg %d bg %d%s%s%s%s%s%s",
@@ -205,7 +208,6 @@ rxvt_term::iso14755_51 (unicode_t ch, rend_t r, int x, int y)
       max_it (width, wcswidth (fname[i], wcslen (fname[i])));
     }
 
-  max_it (width, 8+5); // for char + hex
   max_it (width, strlen (attr));
 
   if (y >= 0)
@@ -214,7 +216,9 @@ rxvt_term::iso14755_51 (unicode_t ch, rend_t r, int x, int y)
       x = 0;
     }
 
-  scr_overlay_new (x, y, width, len * 2 + 1);
+  scr_overlay_new (x, y, width, len * 2 + 2);
+
+  scr_overlay_set (0, 0, rowcol);
 
   r = SET_STYLE (OVERLAY_RSTYLE, GET_STYLE (r));
 
@@ -225,16 +229,16 @@ rxvt_term::iso14755_51 (unicode_t ch, rend_t r, int x, int y)
       ch = *chr++;
 
       sprintf (buf, "%8x", ch);
-      scr_overlay_set (0, y, buf);
-      scr_overlay_set (9, y, '=');
+      scr_overlay_set (0, y + 1, buf);
+      scr_overlay_set (9, y + 1, '=');
 # if !UNICODE_3
       if (ch >= 0x10000)
         ch = 0xfffd;
 # endif
-      scr_overlay_set (11, y, ch, r);
+      scr_overlay_set (11, y + 1, ch, r);
 
       if (WCWIDTH (ch) >= 2)
-        scr_overlay_set (12, y, NOCHAR, r);
+        scr_overlay_set (12, y + 1, NOCHAR, r);
     }
 
 //  {
@@ -242,10 +246,10 @@ rxvt_term::iso14755_51 (unicode_t ch, rend_t r, int x, int y)
 //    snprintf (buf, sizeof (buf), "(%.4d|%.4d)", x, y);
 //    scr_overlay_set (0, 0, buf);
 //  }
-  scr_overlay_set (0, len    , attr);
+  scr_overlay_set (0, len + 1, attr);
   for (int i = 0; i < len; i++)
     {
-      scr_overlay_set (0, len + 1 + i, fname[i]);
+      scr_overlay_set (0, len + 2 + i, fname[i]);
       free (fname[i]);
     }
 
@@ -256,7 +260,7 @@ rxvt_term::iso14755_51 (unicode_t ch, rend_t r, int x, int y)
 }
 #endif
 
-void
+void ecb_cold
 rxvt_term::commit_iso14755 ()
 {
   wchar_t ch = iso14755buf & ISO_14755_MASK;
@@ -284,7 +288,7 @@ rxvt_term::commit_iso14755 ()
   iso14755buf = 0;
 }
 
-static int
+static int ecb_cold
 hex_keyval (XKeyEvent &ev)
 {
   // check whether this event corresponds to a hex digit
@@ -303,7 +307,7 @@ hex_keyval (XKeyEvent &ev)
 }
 #endif
 
-static inline KeySym
+static inline KeySym ecb_cold
 translate_keypad (KeySym keysym, bool kp)
 {
 #ifdef XK_KP_Home
@@ -339,7 +343,7 @@ translate_keypad (KeySym keysym, bool kp)
   return keysym;
 }
 
-static inline int
+static inline int ecb_cold
 map_function_key (KeySym keysym)
 {
   int param = 0;
@@ -398,7 +402,7 @@ map_function_key (KeySym keysym)
   return param;
 }
 
-void
+void ecb_cold
 rxvt_term::key_press (XKeyEvent &ev)
 {
   int ctrl, meta, shft, len;
@@ -423,7 +427,7 @@ rxvt_term::key_press (XKeyEvent &ev)
 
   kbuf[0] = 0;
 
-#ifdef USE_XIM
+#if USE_XIM
   if (Input_Context)
     {
       Status status_return;
@@ -857,7 +861,7 @@ rxvt_term::key_press (XKeyEvent &ev)
   tt_write (kbuf, (unsigned int)len);
 }
 
-void
+void ecb_cold
 rxvt_term::key_release (XKeyEvent &ev)
 {
 #if (MOUSE_WHEEL && MOUSE_SLIP_WHEELING) || ISO_14755 || ENABLE_PERL
@@ -989,7 +993,7 @@ rxvt_term::flush ()
 
       scr_refresh ();
       scrollBar.show (1);
-#ifdef USE_XIM
+#if USE_XIM
       im_send_spot ();
 #endif
     }
@@ -1017,6 +1021,21 @@ rxvt_term::flush_cb (ev::timer &w, int revents)
 }
 
 #ifdef CURSOR_BLINK
+void
+rxvt_term::cursor_blink_reset ()
+{
+  if (hidden_cursor)
+    {
+      hidden_cursor = 0;
+      want_refresh = 1;
+    }
+
+  if (option (Opt_cursorBlink))
+    cursor_blink_ev.again ();
+  else
+    cursor_blink_ev.stop ();
+}
+
 void
 rxvt_term::cursor_blink_cb (ev::timer &w, int revents)
 {
@@ -1206,7 +1225,7 @@ rxvt_term::pty_cb (ev::io &w, int revents)
   refresh_check ();
 }
 
-void
+void ecb_cold
 rxvt_term::pointer_unblank ()
 {
   XDefineCursor (dpy, vt, TermWin_cursor);
@@ -1221,7 +1240,7 @@ rxvt_term::pointer_unblank ()
 }
 
 #ifdef POINTER_BLANK
-void
+void ecb_cold
 rxvt_term::pointer_blank ()
 {
   if (!option (Opt_pointerBlank))
@@ -1233,7 +1252,7 @@ rxvt_term::pointer_blank ()
   hidden_pointer = 1;
 }
 
-void
+void ecb_cold
 rxvt_term::pointer_cb (ev::timer &w, int revents)
 {
   make_current ();
@@ -1335,7 +1354,7 @@ rxvt_term::mouse_report (XButtonEvent &ev)
 }
 
 /*{{{ process an X event */
-void
+void ecb_hot
 rxvt_term::x_cb (XEvent &ev)
 {
   make_current ();
@@ -1448,11 +1467,22 @@ rxvt_term::x_cb (XEvent &ev)
             while (XCheckTypedWindowEvent (dpy, ev.xconfigure.window, ConfigureNotify, &ev))
               ;
 
-#ifdef HAVE_BG_PIXMAP
+            bool want_position_change = SHOULD_INVOKE (HOOK_POSITION_CHANGE);
+
             bool moved = false;
+#ifdef HAVE_BG_PIXMAP
             if (bg_window_position_sensitive ())
               {
+                want_position_change = true;
+                if (!(bg_flags & BG_IS_VALID))
+                  moved = true;
+              }
+#endif
+
+            if (want_position_change)
+              {
                 int x, y;
+
                 if (ev.xconfigure.send_event)
                   {
                     x = ev.xconfigure.x;
@@ -1461,11 +1491,14 @@ rxvt_term::x_cb (XEvent &ev)
                 else
                   get_window_origin (x, y);
 
-                if (bg_set_position (x, y)
-                    || !(bg_flags & BG_IS_VALID))
-                  moved = true;
+                if (x != parent_x || y != parent_y)
+                  {
+                    parent_x = x;
+                    parent_y = y;
+                    HOOK_INVOKE ((this, HOOK_POSITION_CHANGE, DT_INT, x, DT_INT, y, DT_END));
+                    moved = true;
+                  }
               }
-#endif
 
             if (szHint.width != ev.xconfigure.width || szHint.height != ev.xconfigure.height)
               {
@@ -1678,16 +1711,8 @@ rxvt_term::x_cb (XEvent &ev)
     }
 
 #if defined(CURSOR_BLINK)
-  if (option (Opt_cursorBlink) && ev.type == KeyPress)
-    {
-      if (hidden_cursor)
-        {
-          hidden_cursor = 0;
-          want_refresh = 1;
-        }
-
-      cursor_blink_ev.again ();
-    }
+  if (ev.type == KeyPress)
+    cursor_blink_reset ();
 #endif
 
 #if defined(POINTER_BLANK)
@@ -1708,7 +1733,7 @@ rxvt_term::x_cb (XEvent &ev)
 }
 
 #if ENABLE_FRILLS
-void
+void ecb_cold
 rxvt_term::set_urgency (bool enable)
 {
   if (enable == urgency_hint)
@@ -1724,7 +1749,7 @@ rxvt_term::set_urgency (bool enable)
 }
 #endif
 
-void
+void ecb_cold
 rxvt_term::focus_in ()
 {
   if (!focus)
@@ -1759,7 +1784,7 @@ rxvt_term::focus_in ()
     }
 }
 
-void
+void ecb_cold
 rxvt_term::focus_out ()
 {
   if (focus)
@@ -1802,7 +1827,7 @@ rxvt_term::focus_out ()
     }
 }
 
-void
+void ecb_cold
 rxvt_term::update_fade_color (unsigned int idx)
 {
 #if OFF_FOCUS_FADING
@@ -1816,7 +1841,7 @@ rxvt_term::update_fade_color (unsigned int idx)
 }
 
 #if ENABLE_TRANSPARENCY || ENABLE_PERL
-void
+void ecb_hot
 rxvt_term::rootwin_cb (XEvent &ev)
 {
   make_current ();
@@ -1825,7 +1850,6 @@ rxvt_term::rootwin_cb (XEvent &ev)
       && HOOK_INVOKE ((this, HOOK_ROOT_EVENT, DT_XEVENT, &ev, DT_END)))
     return;
 
-# if ENABLE_TRANSPARENCY
   switch (ev.type)
     {
       case PropertyNotify:
@@ -1836,13 +1860,17 @@ rxvt_term::rootwin_cb (XEvent &ev)
         if (ev.xproperty.atom == xa[XA_XROOTPMAP_ID]
             || ev.xproperty.atom == xa[XA_ESETROOT_PMAP_ID])
           {
+# if ENABLE_TRANSPARENCY
             bg_set_root_pixmap ();
             update_background ();
+#endif
+#if ENABLE_PERL
+            HOOK_INVOKE ((this, HOOK_ROOTPMAP_CHANGE, DT_END));
+#endif
           }
 
         break;
     }
-# endif
 
   refresh_check ();
 }
@@ -2210,7 +2238,7 @@ rxvt_term::button_release (XButtonEvent &ev)
 
 /*}}} */
 
-void
+void ecb_hot
 rxvt_term::cmd_parse ()
 {
   wchar_t ch = NOCHAR;
@@ -2339,7 +2367,7 @@ rxvt_term::cmd_parse ()
 }
 
 // read the next character
-wchar_t
+wchar_t ecb_hot
 rxvt_term::next_char () NOTHROW
 {
   while (cmdbuf_ptr < cmdbuf_endp)
@@ -2361,6 +2389,8 @@ rxvt_term::next_char () NOTHROW
       if (len == (size_t)-1)
         {
           mbstate.reset (); // reset now undefined conversion state
+          // a -1 might indicate that a previous incomplete char is invalid (previous return -2)
+          // in which case we "erroneously" return the next byte which might be valid.
           return (unsigned char)*cmdbuf_ptr++; // the _occasional_ latin1 character is allowed to slip through
         }
 
@@ -2373,7 +2403,7 @@ rxvt_term::next_char () NOTHROW
 }
 
 // read the next octet
-uint32_t
+uint32_t ecb_hot
 rxvt_term::next_octet () NOTHROW
 {
   return cmdbuf_ptr < cmdbuf_endp
@@ -2383,7 +2413,7 @@ rxvt_term::next_octet () NOTHROW
 
 static class out_of_input out_of_input;
 
-wchar_t
+wchar_t ecb_hot
 rxvt_term::cmd_getc () THROW ((class out_of_input))
 {
   wchar_t c = next_char ();
@@ -2394,7 +2424,7 @@ rxvt_term::cmd_getc () THROW ((class out_of_input))
   return c;
 }
 
-uint32_t
+uint32_t ecb_hot
 rxvt_term::cmd_get8 () THROW ((class out_of_input))
 {
   uint32_t c = next_octet ();
@@ -2408,7 +2438,7 @@ rxvt_term::cmd_get8 () THROW ((class out_of_input))
 /*{{{ print pipe */
 /*----------------------------------------------------------------------*/
 #ifdef PRINTPIPE
-FILE *
+FILE * ecb_cold
 rxvt_term::popen_printer ()
 {
   FILE *stream = popen (rs[Rs_print_pipe] ? rs[Rs_print_pipe] : PRINTPIPE, "w");
@@ -2419,7 +2449,7 @@ rxvt_term::popen_printer ()
   return stream;
 }
 
-int
+int ecb_cold
 rxvt_term::pclose_printer (FILE *stream)
 {
   fflush (stream);
@@ -2429,7 +2459,7 @@ rxvt_term::pclose_printer (FILE *stream)
 /*
  * simulate attached vt100 printer
  */
-void
+void ecb_cold
 rxvt_term::process_print_pipe ()
 {
   FILE *fd = popen_printer ();
@@ -2494,7 +2524,7 @@ enum {
 };
 
 /*{{{ process non-printing single characters */
-void
+void ecb_hot
 rxvt_term::process_nonprinting (unicode_t ch)
 {
   switch (ch)
@@ -2550,7 +2580,7 @@ rxvt_term::process_nonprinting (unicode_t ch)
 
 
 /*{{{ process VT52 escape sequences */
-void
+void ecb_cold
 rxvt_term::process_escape_vt52 (unicode_t ch)
 {
   int row, col;
@@ -2610,7 +2640,7 @@ rxvt_term::process_escape_vt52 (unicode_t ch)
 
 
 /*{{{ process escape sequences */
-void
+void ecb_hot
 rxvt_term::process_escape_seq ()
 {
   unicode_t ch = cmd_getc ();
@@ -2772,7 +2802,7 @@ static const unsigned char csi_defaults[] =
     make_byte (0,0,0,0,0,0,0,0),	/* x, y, z, {, |, }, ~,    */
   };
 
-void
+void ecb_hot
 rxvt_term::process_csi_seq ()
 {
   unicode_t ch, priv, i;
@@ -3432,7 +3462,7 @@ rxvt_term::process_xterm_seq (int op, char *str, char resp)
           bool changed = false;
 
           if (ISSET_PIXCOLOR (Color_tint))
-            changed = bg_set_tint (pix_colors_focused [Color_tint]);
+            changed = root_effects.set_tint (pix_colors_focused [Color_tint]);
 
           if (changed)
             update_background ();
@@ -3446,10 +3476,14 @@ rxvt_term::process_xterm_seq (int op, char *str, char resp)
         if (!strcmp (str, "?"))
           {
             char str[256];
+            int h_scale = fimage.h_scale;
+            int v_scale = fimage.v_scale;
+            int h_align = fimage.h_align;
+            int v_align = fimage.v_align;
 
             sprintf (str, "[%dx%d+%d+%d]",
-                     min (h_scale, 32767), min (v_scale, 32767),
-                     min (h_align, 32767), min (v_align, 32767));
+                     h_scale, v_scale,
+                     h_align, v_align);
             process_xterm_seq (XTerm_title, str, CHAR_ST);
           }
         else
@@ -3458,13 +3492,19 @@ rxvt_term::process_xterm_seq (int op, char *str, char resp)
 
             if (*str != ';')
               {
-                if (bg_set_file (str))	/* change pixmap */
-                  changed = true;
+                try
+                  {
+                    fimage.set_file_geometry (this, str);
+                    changed = true;
+                  }
+                catch (const class rxvt_failure_exception &e)
+                  {
+                  }
               }
             else
               {
                 str++;
-                if (bg_set_geometry (str, true))
+                if (fimage.set_geometry (str, true))
                   changed = true;
               }
 
@@ -3474,7 +3514,8 @@ rxvt_term::process_xterm_seq (int op, char *str, char resp)
                   {
                     int x, y;
                     get_window_origin (x, y);
-                    bg_set_position (x, y);
+                    parent_x = x;
+                    parent_y = y;
                   }
                 update_background ();
               }
@@ -3574,14 +3615,17 @@ rxvt_term::process_xterm_seq (int op, char *str, char resp)
  *      't' = toggle
  * so no need for fancy checking
  */
-int
+int ecb_cold
 rxvt_term::privcases (int mode, unsigned long bit)
 {
   int state;
 
   if (mode == 's')
     {
-      SavedModes |= (priv_modes & bit);
+      if (priv_modes & bit)
+        SavedModes |= bit;
+      else
+        SavedModes &= ~bit;
       return -1;
     }
   else
@@ -3801,7 +3845,7 @@ rxvt_term::process_terminal_mode (int mode, int priv ecb_unused, unsigned int na
 /*}}} */
 
 /*{{{ process sgr sequences */
-void
+void ecb_hot
 rxvt_term::process_sgr_mode (unsigned int nargs, const int *arg)
 {
   unsigned int i;

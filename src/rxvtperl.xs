@@ -51,6 +51,63 @@
 
 /////////////////////////////////////////////////////////////////////////////
 
+typedef char *		octet_string;
+typedef char *		utf8_string;
+
+typedef int		render_repeat_mode;
+
+#if HAVE_PIXBUF
+typedef GdkPixbuf *	urxvt__pixbuf;
+#endif
+typedef rxvt_img *	urxvt__img;
+typedef rxvt_img::nv	rxvt_img__nv;
+
+/////////////////////////////////////////////////////////////////////////////
+
+static rgba
+parse_rgba (SV *sv, rxvt_screen *s = 0)
+{
+  rgba c;
+
+  if (SvROK (sv))
+    {
+      AV *av = (AV *)SvRV (sv);
+
+      if (SvTYPE ((SV *)av) != SVt_PVAV)
+        croak ("colour must be either a colour string, or an array,");
+
+      int len = av_len (av) + 1;
+
+      if (len != 1 && len != 3 && len != 4)
+        croak ("component colour array must have 1, 3 or 4 components,");
+
+      c.a = rgba::MAX_CC;
+
+      c.r = c.g = c.b = float_to_component (SvIV (*av_fetch (av, 0, 0)));
+
+      if (len >= 3)
+        {
+          c.g = float_to_component (SvIV (*av_fetch (av, 1, 0)));
+          c.b = float_to_component (SvIV (*av_fetch (av, 2, 0)));
+
+          if (len >= 4)
+            c.a = float_to_component (SvIV (*av_fetch (av, 3, 0)));
+        }
+    }
+  else if (s)
+    {
+      rxvt_color rc;
+      rc.set (s, SvPVbyte_nolen (sv));
+      rc.get (c);
+    }
+  else
+    croak ("unable to parse colour,");
+
+  return c;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
 static wchar_t *
 sv2wcs (SV *sv)
 {
@@ -324,7 +381,7 @@ rxvt_perl_interp::~rxvt_perl_interp ()
 }
 
 void
-rxvt_perl_interp::init (rxvt_term *term)
+rxvt_perl_interp::init ()
 {
   if (!perl)
     {
@@ -364,14 +421,75 @@ rxvt_perl_interp::init (rxvt_term *term)
 
       rxvt_pop_locale ();
     }
+}
 
-  if (perl)
+void
+rxvt_perl_interp::init (rxvt_term *term)
+{
+  init ();
+
+  if (perl && !term->perl.self)
     {
       // runs outside of perls ENV
       term->perl.self = (void *)newSVptr ((void *)term, "urxvt::term");
       hv_store ((HV *)SvRV ((SV *)term->perl.self), "_overlay", 8, newRV_noinc ((SV *)newAV ()), 0);
       hv_store ((HV *)SvRV ((SV *)term->perl.self), "_selection", 10, newRV_noinc ((SV *)newAV ()), 0);
     }
+}
+
+void
+rxvt_perl_interp::eval (const char *str)
+{
+  eval_pv (str, 1);
+}
+
+void
+rxvt_perl_interp::usage (rxvt_term *term, int type)
+{
+  localise_env set_environ (perl_environ);
+
+  ENTER;
+  SAVETMPS;
+
+  dSP;
+  PUSHMARK (SP);
+  EXTEND (SP, 2);
+  PUSHs (sv_2mortal (newSVterm (term)));
+  PUSHs (sv_2mortal (newSViv (type)));
+  PUTBACK;
+  call_pv ("urxvt::usage", G_VOID | G_DISCARD);
+
+  FREETMPS;
+  LEAVE;
+}
+
+uint8_t
+rxvt_perl_interp::parse_resource (rxvt_term *term, const char *name, bool arg, bool longopt, bool flag, const char *value)
+{
+  localise_env set_environ (perl_environ);
+
+  ENTER;
+  SAVETMPS;
+
+  dSP;
+  PUSHMARK (SP);
+  EXTEND (SP, 6);
+  PUSHs (sv_2mortal (newSVterm (term)));
+  PUSHs (sv_2mortal (newSVpv (name, 0)));
+  PUSHs (arg     ? &PL_sv_yes : &PL_sv_no);
+  PUSHs (longopt ? &PL_sv_yes : &PL_sv_no);
+  PUSHs (flag    ? &PL_sv_yes : &PL_sv_no);
+  PUSHs (value ? sv_2mortal (newSVpv (value, 0)) : &PL_sv_undef);
+  PUTBACK;
+  call_pv ("urxvt::parse_resource", G_SCALAR);
+  SPAGAIN;
+
+  uint8_t ret = POPi;
+
+  FREETMPS;
+  LEAVE;
+
+  return ret;
 }
 
 static void
@@ -414,8 +532,7 @@ rxvt_perl_interp::invoke (rxvt_term *term, hook_type htype, ...)
 
   bool event_consumed;
 
-  if (htype == HOOK_INIT || htype == HOOK_DESTROY // must be called always
-      || term->perl.should_invoke [htype])
+  if (term->perl.should_invoke [htype])
     {
       dSP;
       va_list ap;
@@ -635,6 +752,7 @@ rxvt_perl_interp::selection_finish (rxvt_selection *sel, char *data, unsigned in
 
   dSP;
   XPUSHs (sv_2mortal (newSVpvn (data, len)));
+  PUTBACK;
   call_sv ((SV *)sel->cb_sv, G_VOID | G_DISCARD | G_EVAL);
 
   if (SvTRUE (ERRSV))
@@ -785,6 +903,73 @@ BOOT:
     const_iv (XIMVisibleToForward),
     const_iv (XIMVisibleToBackword),
     const_iv (XIMVisibleToCenter),
+#if XRENDER
+    const_iv (PictStandardARGB32),
+    const_iv (PictStandardRGB24),
+    const_iv (PictStandardA8),
+    const_iv (PictStandardA4),
+    const_iv (PictStandardA1),
+    const_iv (RepeatNone),
+    const_iv (RepeatNormal),
+    const_iv (RepeatPad),
+    const_iv (RepeatReflect),
+    // all versions
+    const_iv (PictOpClear),
+    const_iv (PictOpSrc),
+    const_iv (PictOpDst),
+    const_iv (PictOpOver),
+    const_iv (PictOpOverReverse),
+    const_iv (PictOpIn),
+    const_iv (PictOpInReverse),
+    const_iv (PictOpOut),
+    const_iv (PictOpOutReverse),
+    const_iv (PictOpAtop),
+    const_iv (PictOpAtopReverse),
+    const_iv (PictOpXor),
+    const_iv (PictOpAdd),
+    const_iv (PictOpSaturate),
+    // 0.2+
+    const_iv (PictOpDisjointClear),
+    const_iv (PictOpDisjointSrc),
+    const_iv (PictOpDisjointDst),
+    const_iv (PictOpDisjointOver),
+    const_iv (PictOpDisjointOverReverse),
+    const_iv (PictOpDisjointIn),
+    const_iv (PictOpDisjointInReverse),
+    const_iv (PictOpDisjointOut),
+    const_iv (PictOpDisjointOutReverse),
+    const_iv (PictOpDisjointAtop),
+    const_iv (PictOpDisjointAtopReverse),
+    const_iv (PictOpDisjointXor),
+    const_iv (PictOpConjointClear),
+    const_iv (PictOpConjointSrc),
+    const_iv (PictOpConjointDst),
+    const_iv (PictOpConjointOver),
+    const_iv (PictOpConjointOverReverse),
+    const_iv (PictOpConjointIn),
+    const_iv (PictOpConjointInReverse),
+    const_iv (PictOpConjointOut),
+    const_iv (PictOpConjointOutReverse),
+    const_iv (PictOpConjointAtop),
+    const_iv (PictOpConjointAtopReverse),
+    const_iv (PictOpConjointXor),
+    // 0.11+
+    const_iv (PictOpMultiply),
+    const_iv (PictOpScreen),
+    const_iv (PictOpOverlay),
+    const_iv (PictOpDarken),
+    const_iv (PictOpLighten),
+    const_iv (PictOpColorDodge),
+    const_iv (PictOpColorBurn),
+    const_iv (PictOpHardLight),
+    const_iv (PictOpSoftLight),
+    const_iv (PictOpDifference),
+    const_iv (PictOpExclusion),
+    const_iv (PictOpHSLHue),
+    const_iv (PictOpHSLSaturation),
+    const_iv (PictOpHSLColor),
+    const_iv (PictOpHSLLuminosity),
+#endif
 #   if 0
     const_iv (XIMForwardChar),
     const_iv (XIMBackwardChar),
@@ -807,6 +992,11 @@ BOOT:
 }
 
 void
+log (const char *msg)
+	CODE:
+        rxvt_log ("%s", msg);
+
+void
 warn (const char *msg)
 	CODE:
         rxvt_warn ("%s", msg);
@@ -818,6 +1008,22 @@ fatal (const char *msg)
 
 void
 _exit (int status)
+
+void
+catch_fatal (SV *block)
+	PROTOTYPE: &
+        CODE:
+        try
+          {
+            PUSHMARK (SP);
+            PUTBACK;
+            call_sv (block, G_VOID | G_DISCARD);
+            SPAGAIN;
+          }
+        catch (const rxvt_failure_exception &e)
+          {
+            croak ("rxvt_fatal exception caught, trying to continue.");
+          }
 
 NV
 NOW ()
@@ -952,7 +1158,24 @@ rxvt_term::destroy ()
 void
 rxvt_term::set_should_invoke (int htype, int inc)
 	CODE:
-        THIS->perl.should_invoke [htype] += inc;
+        uint8_t &count = THIS->perl.should_invoke [htype];
+        uint8_t prev = count;
+        count += inc;
+        if (!prev != !count)
+	  {
+            // hook status changed, react
+            switch (htype)
+              {
+                case HOOK_POSITION_CHANGE:
+                  if (count)
+                    THIS->get_window_origin (THIS->parent_x, THIS->parent_y);
+              }
+	  }
+
+void
+rxvt_term::put_option_db (octet_string specifier, octet_string value)
+	CODE:
+        XrmPutStringResource (&THIS->option_db, specifier, value);
 
 int
 rxvt_term::grab_button (int button, U32 modifiers, Window window = THIS->vt)
@@ -1216,6 +1439,20 @@ Window
 rxvt_term::parent ()
 	CODE:
         RETVAL = THIS->parent;
+        OUTPUT:
+        RETVAL
+
+int
+rxvt_term::parent_x ()
+	CODE:
+        RETVAL = THIS->parent_x;
+        OUTPUT:
+        RETVAL
+
+int
+rxvt_term::parent_y ()
+	CODE:
+        RETVAL = THIS->parent_y;
         OUTPUT:
         RETVAL
 
@@ -1556,6 +1793,11 @@ rxvt_term::option (U8 optval, int set = -1)
                     THIS->want_refresh = 1;
                     THIS->refresh_check ();
                     break;
+#ifdef CURSOR_BLINK
+                  case Opt_cursorBlink:
+                    THIS->cursor_blink_reset ();
+                    break;
+#endif
 
                   case Opt_cursorUnderline:
                     THIS->want_refresh = 1;
@@ -1703,6 +1945,9 @@ void
 rxvt_term::scr_bell ()
 
 void
+rxvt_term::scr_recolour (bool refresh = true);
+
+void
 rxvt_term::scr_change_screen (int screen)
 
 void
@@ -1825,7 +2070,7 @@ rxvt_term::XChangeProperty (Window window, Atom property, Atom type, int format,
 }
 
 Atom
-XInternAtom (rxvt_term *term, char *atom_name, int only_if_exists = FALSE)
+XInternAtom (rxvt_term *term, octet_string atom_name, int only_if_exists = FALSE)
 	C_ARGS: term->dpy, atom_name, only_if_exists
 
 char *
@@ -1836,7 +2081,7 @@ XGetAtomName (rxvt_term *term, Atom atom)
 
 void
 XDeleteProperty (rxvt_term *term, Window window, Atom property)
-  	C_ARGS: term->dpy, window, property
+	C_ARGS: term->dpy, window, property
 
 Window
 rxvt_term::DefaultRootWindow ()
@@ -1898,6 +2143,103 @@ rxvt_term::XTranslateCoordinates (Window src, Window dst, int x, int y)
 }
 
 #############################################################################
+# fancy bg bloatstuff (TODO: should be moved up somewhere)
+
+bool
+rxvt_term::has_render ()
+	CODE:
+        RETVAL = THIS->display->flags & DISPLAY_HAS_RENDER;
+	OUTPUT:
+        RETVAL
+
+void
+rxvt_term::background_geometry (bool border = false)
+	PPCODE:
+	EXTEND (SP, 4);
+        PUSHs (sv_2mortal (newSViv (THIS->parent_x + (border ? THIS->window_vt_x : 0))));
+        PUSHs (sv_2mortal (newSViv (THIS->parent_y + (border ? THIS->window_vt_y : 0))));
+        PUSHs (sv_2mortal (newSViv (border ? THIS->vt_width  : THIS->szHint.width )));
+        PUSHs (sv_2mortal (newSViv (border ? THIS->vt_height : THIS->szHint.height)));
+
+#if HAVE_IMG
+
+rxvt_img *
+rxvt_term::new_img (SV *format = &PL_sv_undef, int x = 0, int y = 0, int width = 1, int height = 1)
+	CODE:
+        XRenderPictFormat *f = SvOK (format)
+                             ? XRenderFindStandardFormat (THIS->dpy, SvIV (format))
+                             : XRenderFindVisualFormat   (THIS->dpy, THIS->visual);
+        RETVAL = new rxvt_img (THIS, f, x, y, width, height);
+        RETVAL->alloc ();
+	OUTPUT:
+        RETVAL
+
+#if ENABLE_TRANSPARENCY
+
+rxvt_img *
+rxvt_term::new_img_from_root ()
+	CODE:
+        RETVAL = rxvt_img::new_from_root (THIS);
+	OUTPUT:
+        RETVAL
+
+#endif
+
+#if HAVE_PIXBUF
+
+rxvt_img *
+rxvt_term::new_img_from_file (octet_string filename)
+	CODE:
+        try
+          {
+            RETVAL = rxvt_img::new_from_file (THIS, filename);
+          }
+        catch (const class rxvt_failure_exception &e)
+          {
+            croak ("new_img_from_file failed");
+          }
+	OUTPUT:
+        RETVAL
+
+#endif
+
+#if HAVE_BG_PIXMAP
+
+void
+rxvt_term::set_background (rxvt_img *img, bool border = false)
+	CODE:
+        THIS->bg_destroy ();
+        THIS->bg_flags &= ~(rxvt_term::BG_NEEDS_REFRESH | rxvt_term::BG_INHIBIT_RENDER | rxvt_term::BG_IS_TRANSPARENT);
+
+        if (img) // TODO: cannot be false
+          {
+            img = img->clone (); // own the img
+
+            if (img->repeat != RepeatNormal) // X11 only supports RepeatNormal as bg pixmap
+              img->sub_rect (0, 0,
+                             border ? THIS->vt_width  : THIS->szHint.width,
+                             border ? THIS->vt_height : THIS->szHint.height)
+                 ->replace (img);
+
+            // just in case, should usually be a nop
+            img->reify ()
+               ->replace (img);
+
+            img->convert_format (XRenderFindVisualFormat (THIS->dpy, THIS->visual), THIS->pix_colors [Color_bg])
+               ->replace (img);
+
+            THIS->bg_img = img;
+            THIS->bg_flags |= rxvt_term::BG_NEEDS_REFRESH | rxvt_term::BG_INHIBIT_RENDER;
+
+            if (!border)
+              THIS->bg_flags |= rxvt_term::BG_IS_TRANSPARENT;
+          }
+
+#endif
+
+#endif
+
+#############################################################################
 # urxvt::overlay
 #############################################################################
 
@@ -1916,4 +2258,161 @@ void
 overlay::DESTROY ()
 
 INCLUDE: $PERL <iom_perl.xs -pe s/IOM_MODULE/urxvt/g,s/IOM_CLASS/urxvt/g |
+
+MODULE = urxvt             PACKAGE = urxvt::pixbuf	PREFIX = gdk_pixbuf_
+
+#if HAVE_PIXBUF
+
+urxvt::pixbuf gdk_pixbuf_new_from_file (SV *klass, octet_string filename)
+        C_ARGS: filename, 0
+
+void
+DESTROY (urxvt::pixbuf self)
+	CODE:
+        g_object_unref (self);
+
+#endif
+
+MODULE = urxvt             PACKAGE = urxvt::img
+
+#if HAVE_IMG
+
+# rxvt_img *new (rxvt_screen *screen, XRenderPictFormat *format, int width, int height)
+# rxvt_img *rxvt_img (rxvt_screen *screen, XRenderPictFormat *format, int width, int height, Pixmap pixmap);
+
+void
+rxvt_img::geometry ()
+	PPCODE:
+        EXTEND (SP, 4);
+        PUSHs (sv_2mortal (newSViv (THIS->x)));
+        PUSHs (sv_2mortal (newSViv (THIS->y)));
+        PUSHs (sv_2mortal (newSViv (THIS->w)));
+        PUSHs (sv_2mortal (newSViv (THIS->h)));
+
+int
+rxvt_img::x ()
+	ALIAS:
+        x = 0
+        y = 1
+        w = 2
+        h = 3
+	CODE:
+        switch (ix)
+          {
+            case 0: RETVAL = THIS->x; break;
+            case 1: RETVAL = THIS->y; break;
+            case 2: RETVAL = THIS->w; break;
+            case 3: RETVAL = THIS->h; break;
+          }
+	OUTPUT:
+        RETVAL
+
+Pixmap
+rxvt_img::pm ()
+	CODE:
+        RETVAL = THIS->pm;
+	OUTPUT:
+        RETVAL
+
+void
+rxvt_img::fill (SV *c, int x = 0, int y = 0, int w = THIS->w, int h = THIS->h)
+	PROTOTYPE: $;$$$$
+	INIT:
+        rgba cc = parse_rgba (c, THIS->s);
+	C_ARGS: cc, x, y, w, h
+
+void
+rxvt_img::DESTROY ()
+	CODE:
+        delete THIS;
+
+void
+rxvt_img::add_alpha ()
+
+void
+rxvt_img::unshare ()
+
+void
+rxvt_img::repeat_mode (render_repeat_mode repeat = 0)
+	PPCODE:
+        if (items >= 2)
+          THIS->repeat_mode (repeat);
+        if (GIMME_V != G_VOID)
+          XPUSHs (sv_2mortal (newSViv (THIS->repeat)));
+
+void
+rxvt_img::move (int dx, int dy)
+
+void
+rxvt_img::brightness (rxvt_img::nv r, rxvt_img::nv g, rxvt_img::nv b, rxvt_img::nv a = 1.)
+
+void
+rxvt_img::contrast (rxvt_img::nv r, rxvt_img::nv g, rxvt_img::nv b, rxvt_img::nv a = 1.)
+
+void
+rxvt_img::draw (rxvt_img *img, int op = PictOpOver, rxvt_img::nv mask = 1.);
+
+rxvt_img *
+rxvt_img::clone ()
+
+rxvt_img *
+rxvt_img::reify ()
+
+rxvt_img *
+rxvt_img::sub_rect (int x, int y, int width, int height)
+
+rxvt_img *
+rxvt_img::blur (int rh, int rv)
+
+rxvt_img *
+rxvt_img::muladd (rxvt_img::nv mul, rxvt_img::nv add)
+
+rxvt_img *
+rxvt_img::transform (rxvt_img::nv p11, rxvt_img::nv p12, rxvt_img::nv p13, rxvt_img::nv p21, rxvt_img::nv p22, rxvt_img::nv p23, rxvt_img::nv p31, rxvt_img::nv p32, rxvt_img::nv p33)
+	INIT:
+        rxvt_img::nv matrix[3][3] = {
+          { p11, p12, p13 },
+          { p21, p22, p23 },
+          { p31, p32, p33 }
+        };
+	C_ARGS: matrix
+
+rxvt_img *
+rxvt_img::scale (int new_width, int new_height)
+
+rxvt_img *
+rxvt_img::rotate (int x, int y, rxvt_img::nv phi)
+
+rxvt_img *
+rxvt_img::tint (SV *c)
+	INIT:
+        rgba cc = parse_rgba (c, THIS->s);
+	C_ARGS: cc
+
+rxvt_img *
+rxvt_img::filter (octet_string name, SV *params = &PL_sv_undef)
+	CODE:
+        rxvt_img::nv *vparams = 0;
+        int nparams = 0;
+
+        if (SvOK (params))
+	  {
+            // we overlay rxvt_temp_buf, what a hack
+            assert (sizeof (rxvt_img::nv) >= sizeof (int));
+
+            if (!SvROK (params) || SvTYPE (SvRV (params)) != SVt_PVAV)
+              croak ("rxvt_img::filter: params must be an array reference with parameter values");
+
+            nparams = av_len ((AV *)SvRV (params)) + 1;
+            vparams = rxvt_temp_buf<rxvt_img::nv> (nparams);
+
+            for (int i = 0; i < nparams; ++i)
+              vparams [i] = SvNV (*av_fetch ((AV *)SvRV (params), i, 1));
+          }
+
+        RETVAL = THIS->filter (name, nparams, vparams);
+	OUTPUT:
+        RETVAL
+
+#endif
 

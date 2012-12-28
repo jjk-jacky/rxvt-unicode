@@ -38,6 +38,13 @@ struct rxvt_perl_term
   void *self;
   unsigned long grabtime;
   uint8_t should_invoke[HOOK_NUM];
+
+  // this object must be zero-initialised
+  rxvt_perl_term ()
+  {
+    should_invoke [HOOK_INIT]     =
+    should_invoke [HOOK_DESTROY]  = 1;
+  }
 };
 
 struct rxvt_perl_interp
@@ -46,10 +53,20 @@ struct rxvt_perl_interp
 
   ~rxvt_perl_interp ();
 
+  void init ();
   void init (rxvt_term *term);
+  void eval (const char *str);
   bool invoke (rxvt_term *term, hook_type htype, ...);
   void line_update (rxvt_term *term);
   void selection_finish (rxvt_selection *sel, char *data, unsigned int len);
+  void usage (rxvt_term *term, int type);
+
+  enum
+  {
+    RESOURCE_AVAILABLE = 1, // whether the option is valid
+    RESOURCE_ARG       = 2  // whether the option eats the next arg
+  };
+  uint8_t parse_resource (rxvt_term *term, const char *name, bool arg, bool longopt, bool flag, const char *value);
 };
 
 extern struct rxvt_perl_interp rxvt_perl;

@@ -68,7 +68,7 @@ enum {
   XA_WM_LOCALE_NAME,
   XA_XIM_SERVERS,
 #endif
-#if ENABLE_TRANSPARENCY
+#if ENABLE_TRANSPARENCY || ENABLE_PERL
   XA_XROOTPMAP_ID,
   XA_ESETROOT_PMAP_ID,
 #endif
@@ -180,7 +180,7 @@ struct rxvt_drawable
 
 /////////////////////////////////////////////////////////////////////////////
 
-#ifdef USE_XIM
+#if USE_XIM
 struct rxvt_xim : refcounted
 {
   void destroy ();
@@ -214,8 +214,15 @@ struct rxvt_screen
 #endif
 
   void set (rxvt_display *disp);
-  void select_visual (int bitdepth);
+  void select_visual (int id);
+  void select_depth (int bitdepth); // select visual by depth
   void clear ();
+};
+
+enum
+{
+  DISPLAY_HAS_RENDER      = 1 << 0,
+  DISPLAY_HAS_RENDER_CONV = 1 << 1,
 };
 
 struct rxvt_display : refcounted
@@ -225,7 +232,7 @@ struct rxvt_display : refcounted
   ev::prepare flush_ev; void flush_cb (ev::prepare &w, int revents);
   ev::io      x_ev    ; void x_cb     (ev::io      &w, int revents);
 
-#ifdef USE_XIM
+#if USE_XIM
   refcache<rxvt_xim> xims;
   vector<im_watcher *> imw;
 
@@ -244,6 +251,7 @@ struct rxvt_display : refcounted
 #ifdef POINTER_BLANK
   Cursor    blank_cursor;
 #endif
+  uint8_t   flags;
 
   rxvt_display (const char *id);
   XrmDatabase get_resources (bool refresh);
@@ -257,12 +265,13 @@ struct rxvt_display : refcounted
   }
 
   Atom atom (const char *name);
+  Pixmap get_pixmap_property (Atom property);
   void set_selection_owner (rxvt_term *owner, bool clipboard);
 
   void reg (xevent_watcher *w);
   void unreg (xevent_watcher *w);
 
-#ifdef USE_XIM
+#if USE_XIM
   void reg (im_watcher *w);
   void unreg (im_watcher *w);
 
@@ -271,7 +280,7 @@ struct rxvt_display : refcounted
 #endif
 };
 
-#ifdef USE_XIM
+#if USE_XIM
 struct im_watcher : rxvt_watcher, callback<void (void)>
 {
   void start (rxvt_display *display)
@@ -310,14 +319,14 @@ typedef unsigned long Pixel;
 
 struct rgba
 {
-  unsigned short r, g, b, a;
+  uint16_t r, g, b, a;
 
   enum { MIN_CC = 0x0000, MAX_CC  = 0xffff };
 
   rgba ()
   { }
 
-  rgba (unsigned short r, unsigned short g, unsigned short b, unsigned short a = MAX_CC)
+  rgba (uint16_t r, uint16_t g, uint16_t b, uint16_t a = MAX_CC)
   : r(r), g(g), b(b), a(a)
   { }
 };
@@ -347,8 +356,14 @@ struct rxvt_color
   bool alloc (rxvt_screen *screen, const rgba &color);
   void free (rxvt_screen *screen);
 
-  void get (rgba &color);
-  void get (XColor &color);
+  operator rgba () const
+  {
+    rgba c;
+    get (c);
+    return c;
+  }
+  void get (rgba &color) const;
+  void get (XColor &color) const;
 
   bool set (rxvt_screen *screen, const char *name);
   bool set (rxvt_screen *screen, const rgba &color);

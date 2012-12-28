@@ -24,11 +24,7 @@
 
 #include "ptytty.h"
 
-#if !PTYTTY_NO_LIBCPP
-#include <vector>
-#include <algorithm>
-using namespace std;
-#endif
+#include "estl.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -335,7 +331,7 @@ ptytty::init ()
 #if PTYTTY_HELPER
       use_helper ();
 #else
-      PTYTTY_WARN ("running setuid/setgid without pty helper compiled in, continuing unprivileged.\n", 0);
+      PTYTTY_WARN ("running setuid/setgid without pty helper compiled in, continuing unprivileged.\n");
 #endif
 
       drop_privileges ();

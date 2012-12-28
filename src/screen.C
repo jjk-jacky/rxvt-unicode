@@ -30,8 +30,6 @@
 
 #include <inttypes.h>
 
-#include "salloc.C" // HACK, should be a separate compile!
-
 static inline void
 fill_text (text_t *start, text_t value, int len)
 {
@@ -100,9 +98,9 @@ fill_text (text_t *start, text_t value, int len)
 void
 rxvt_term::scr_blank_line (line_t &l, unsigned int col, unsigned int width, rend_t efs) const NOTHROW
 {
-  if (!l.t)
+  if (!l.valid ())
     {
-      lalloc (l);
+      l.alloc ();
       col = 0;
       width = ncol;
     }
@@ -159,6 +157,40 @@ rxvt_term::scr_kill_char (line_t &l, int col) const NOTHROW
  * ------------------------------------------------------------------------- */
 
 void
+rxvt_term::scr_alloc () NOTHROW
+{
+  int tsize = sizeof (text_t) * ncol;
+  int rsize = sizeof (rend_t) * ncol;
+
+  // we assume that rend_t size is a sufficient alignment
+  // factor for text_t and line_t values, and we only
+  // need to adjust tsize.
+  tsize = (tsize + sizeof (rend_t) - 1);
+  tsize -= tsize % sizeof (rend_t);
+
+  int all_rows = total_rows + nrow + nrow;
+
+  chunk_size = (sizeof (line_t) + rsize + tsize) * all_rows;
+  chunk = chunk_alloc (chunk_size, 0);
+
+  char *base = (char *)chunk + sizeof (line_t) * all_rows;
+
+  for (int row = 0; row < all_rows; ++row)
+    {
+      line_t &l = ((line_t *)chunk) [row];
+
+      l.t = (text_t *)base; base += tsize;
+      l.r = (rend_t *)base; base += rsize;
+      l.l = -1;
+      l.f = 0;
+    }
+
+  drawn_buf = (line_t *)chunk;
+  swap_buf  = drawn_buf + nrow;
+  row_buf   = swap_buf  + nrow;
+}
+
+void ecb_cold
 rxvt_term::scr_reset ()
 {
 #if ENABLE_OVERLAY
@@ -194,27 +226,23 @@ rxvt_term::scr_reset ()
   screen.tscroll = 0;
   screen.bscroll = nrow - 1;
 
-  if (!row_buf)
+  void *prev_chunk = chunk;
+  size_t prev_chunk_size = chunk_size;
+  line_t *prev_drawn_buf = drawn_buf;
+  line_t *prev_swap_buf  = swap_buf;
+  line_t *prev_row_buf   = row_buf;
+
+  int common_col = min (prev_ncol, ncol);
+
+  scr_alloc ();
+
+  if (!prev_row_buf)
     {
       /*
-       * first time called so just malloc everything: don't rely on realloc
+       * first time called (or after scr_release) so just malloc everything: don't rely on realloc
        */
       top_row    = 0;
       term_start = 0;
-
-      talloc = new rxvt_salloc (ncol * sizeof (text_t));
-      ralloc = new rxvt_salloc (ncol * sizeof (rend_t));
-
-      row_buf   = (line_t *)rxvt_calloc (total_rows       , sizeof (line_t));
-      drawn_buf = (line_t *)rxvt_calloc (nrow             , sizeof (line_t));
-      swap_buf  = (line_t *)rxvt_calloc (nrow             , sizeof (line_t));
-
-      for (int row = nrow; row--; )
-        {
-          scr_blank_screen_mem (ROW (row), DEFAULT_RSTYLE);
-          scr_blank_screen_mem (swap_buf [row], DEFAULT_RSTYLE);
-          scr_blank_screen_mem (drawn_buf[row], DEFAULT_RSTYLE);
-        }
 
       memset (charsets, 'B', sizeof (charsets));
       rstyle = DEFAULT_RSTYLE;
@@ -247,37 +275,16 @@ rxvt_term::scr_reset ()
        * add or delete rows as appropriate
        */
 
-      rxvt_salloc *old_ta = talloc; talloc = new rxvt_salloc (ncol * sizeof (text_t));
-      rxvt_salloc *old_ra = ralloc; ralloc = new rxvt_salloc (ncol * sizeof (rend_t));
-
-#if 0
-      if (nrow < prev_nrow)
-        {
-          for (int row = nrow; row < prev_nrow; row++)
-            {
-              lfree (swap_buf [row]);
-              lfree (drawn_buf[row]);
-            }
-        }
-#endif
-
-      drawn_buf = (line_t *)rxvt_realloc (drawn_buf, nrow * sizeof (line_t));
-      swap_buf  = (line_t *)rxvt_realloc (swap_buf , nrow * sizeof (line_t));
-
       for (int row = min (nrow, prev_nrow); row--; )
         {
-          lresize (drawn_buf[row]);
-          lresize (swap_buf [row]);
-        }
+          scr_blank_screen_mem (drawn_buf [row], DEFAULT_RSTYLE);
+          scr_blank_screen_mem (swap_buf  [row], DEFAULT_RSTYLE);
 
-      for (int row = prev_nrow; row < nrow; row++)
-        {
-          swap_buf [row].clear (); scr_blank_screen_mem (swap_buf [row], DEFAULT_RSTYLE);
-          drawn_buf[row].clear (); scr_blank_screen_mem (drawn_buf[row], DEFAULT_RSTYLE);
+          memcpy (drawn_buf [row].t, prev_drawn_buf [row].t, sizeof (text_t) * common_col);
+          memcpy (drawn_buf [row].r, prev_drawn_buf [row].r, sizeof (rend_t) * common_col);
+          memcpy (swap_buf  [row].t, prev_swap_buf  [row].t, sizeof (text_t) * common_col);
+          memcpy (swap_buf  [row].r, prev_swap_buf  [row].r, sizeof (rend_t) * common_col);
         }
-
-      line_t *old_buf = row_buf;
-      row_buf = (line_t *)rxvt_calloc (total_rows, sizeof (line_t));
 
       int p    = MOD (term_start + prev_nrow, prev_total_rows);  // previous row
       int pend = MOD (term_start + top_row  , prev_total_rows);
@@ -295,11 +302,11 @@ rxvt_term::scr_reset ()
           do
             {
               p = MOD (p - 1, prev_total_rows);
-              assert (old_buf [MOD (p, prev_total_rows)].t);
+              assert (prev_row_buf [MOD (p, prev_total_rows)].t);
               int plines = 1;
-              int llen = old_buf [MOD (p, prev_total_rows)].l;
+              int llen = prev_row_buf [MOD (p, prev_total_rows)].l;
 
-              while (p != pend && old_buf [MOD (p - 1, prev_total_rows)].is_longer ())
+              while (p != pend && prev_row_buf [MOD (p - 1, prev_total_rows)].is_longer ())
                 {
                   p = MOD (p - 1, prev_total_rows);
 
@@ -322,7 +329,7 @@ rxvt_term::scr_reset ()
               for (int qrow = q; qlines--; qrow++)
                 {
                   qline = row_buf + qrow;
-                  lalloc (*qline);
+                  qline->alloc (); // redundant with next line
                   qline->l = ncol;
                   qline->is_longer (1);
 
@@ -347,7 +354,7 @@ rxvt_term::scr_reset ()
                       if (prow == ocur.row)
                         screen.cur.row = q - (total_rows - nrow);
 
-                      line_t &pline = old_buf [prow];
+                      line_t &pline = prev_row_buf [prow];
 
                       int len = min (min (prev_ncol - pcol, ncol - qcol), llen - lofs);
 
@@ -378,28 +385,33 @@ rxvt_term::scr_reset ()
 
           for (int row = min (nrow, prev_nrow); row--; )
             {
-              line_t &pline = old_buf [MOD (term_start + row, prev_total_rows)];
-              line_t &qline = row_buf [row];
+              line_t &src = prev_row_buf [MOD (term_start + row, prev_total_rows)];
+              line_t &dst = row_buf [row];
 
-              qline = pline;
-              lresize (qline);
+              scr_blank_screen_mem (dst, DEFAULT_RSTYLE);
+
+              memcpy (dst.t, src.t, sizeof (text_t) * common_col);
+              memcpy (dst.r, src.r, sizeof (rend_t) * common_col);
             }
 
           for (int row = prev_nrow; row < nrow; row++)
-            {
-              row_buf [row].clear (); scr_blank_screen_mem (row_buf [row], DEFAULT_RSTYLE);
-            }
+            scr_blank_screen_mem (row_buf [row], DEFAULT_RSTYLE);
 
           term_start = 0;
         }
 
-      free (old_buf);
-      delete old_ta;
-      delete old_ra;
-
       clamp_it (screen.cur.row, 0, nrow - 1);
       clamp_it (screen.cur.col, 0, ncol - 1);
     }
+
+  for (int row = nrow; row--; )
+    {
+      if (!ROW       (row).valid ()) scr_blank_screen_mem (ROW       (row), DEFAULT_RSTYLE);
+      if (!swap_buf  [row].valid ()) scr_blank_screen_mem (swap_buf  [row], DEFAULT_RSTYLE);
+      if (!drawn_buf [row].valid ()) scr_blank_screen_mem (drawn_buf [row], DEFAULT_RSTYLE);
+    }
+
+  chunk_free (prev_chunk, prev_chunk_size);
 
   free (tabs);
   tabs = (char *)rxvt_malloc (ncol);
@@ -417,36 +429,26 @@ rxvt_term::scr_reset ()
   HOOK_INVOKE ((this, HOOK_RESET, DT_END));
 }
 
-/* ------------------------------------------------------------------------- */
-/*
- * Free everything.  That way malloc debugging can find leakage.
- */
-void
+void ecb_cold
 rxvt_term::scr_release () NOTHROW
 {
-  if (row_buf)
-    {
-      delete talloc; talloc = 0;
-      delete ralloc; ralloc = 0;
+  chunk_free (chunk, chunk_size);
+  chunk = 0;
+  row_buf = 0;
 
-      free (row_buf);
-      free (swap_buf);
-      free (drawn_buf);
-      row_buf = 0; // signal that we freed all the arrays above
-
-      free (tabs);
-      tabs = 0;
-    }
+  free (tabs);
+  tabs = 0;
 }
 
 /* ------------------------------------------------------------------------- */
 /*
  * Hard/Soft reset
  */
-void
+void ecb_cold
 rxvt_term::scr_poweron ()
 {
   scr_release ();
+
   prev_nrow = prev_ncol = 0;
   rvideo_mode = false;
   scr_soft_reset ();
@@ -456,7 +458,7 @@ rxvt_term::scr_poweron ()
   scr_refresh ();
 }
 
-void
+void ecb_cold
 rxvt_term::scr_soft_reset () NOTHROW
 {
   /* only affects modes, nothing drastic such as clearing the screen */
@@ -632,7 +634,7 @@ rxvt_term::scr_rendition (int set, int style) NOTHROW
  * count positive ==> scroll up
  * count negative ==> scroll down
  */
-int
+int ecb_hot
 rxvt_term::scr_scroll_text (int row1, int row2, int count) NOTHROW
 {
   if (count == 0 || (row1 > row2))
@@ -776,7 +778,7 @@ rxvt_term::scr_scroll_text (int row1, int row2, int count) NOTHROW
 /*
  * Add text given in <str> of length <len> to screen struct
  */
-void
+void ecb_hot
 rxvt_term::scr_add_lines (const wchar_t *str, int len, int minlines) NOTHROW
 {
   if (len <= 0)               /* sanity */
@@ -1136,7 +1138,7 @@ rxvt_term::scr_tab (int count, bool ht) NOTHROW
  * in that row right.  Clear left column.
  */
 #if !ENABLE_MINIMAL
-void
+void ecb_cold
 rxvt_term::scr_backindex () NOTHROW
 {
   if (screen.cur.col > 0)
@@ -1153,7 +1155,7 @@ rxvt_term::scr_backindex () NOTHROW
  * in that row left.  Clear right column.
  */
 #if !ENABLE_MINIMAL
-void
+void ecb_cold
 rxvt_term::scr_forwardindex () NOTHROW
 {
   if (screen.cur.col < ncol - 1)
@@ -1414,7 +1416,7 @@ rxvt_term::scr_erase_savelines () NOTHROW
  * Fill the screen with `E's
  * XTERM_SEQ: Screen Alignment Test: ESC # 8
  */
-void
+void ecb_cold
 rxvt_term::scr_E () NOTHROW
 {
   rend_t fs;
@@ -1588,7 +1590,7 @@ rxvt_term::scr_insdel_chars (int count, int insdel) NOTHROW
  * Set the scrolling region
  * XTERM_SEQ: Set region <top> - <bot> inclusive: ESC [ <top> ; <bot> r
  */
-void
+void ecb_cold
 rxvt_term::scr_scroll_region (int top, int bot) NOTHROW
 {
   max_it (top, 0);
@@ -1608,7 +1610,7 @@ rxvt_term::scr_scroll_region (int top, int bot) NOTHROW
  * XTERM_SEQ: Make cursor visible  : ESC [ ? 25 h
  * XTERM_SEQ: Make cursor invisible: ESC [ ? 25 l
  */
-void
+void ecb_cold
 rxvt_term::scr_cursor_visible (int mode) NOTHROW
 {
   want_refresh = 1;
@@ -1625,7 +1627,7 @@ rxvt_term::scr_cursor_visible (int mode) NOTHROW
  * XTERM_SEQ: Set Wraparound  : ESC [ ? 7 h
  * XTERM_SEQ: Unset Wraparound: ESC [ ? 7 l
  */
-void
+void ecb_cold
 rxvt_term::scr_autowrap (int mode) NOTHROW
 {
   if (mode)
@@ -1644,7 +1646,7 @@ rxvt_term::scr_autowrap (int mode) NOTHROW
  * XTERM_SEQ: Set Absolute: ESC [ ? 6 h
  * XTERM_SEQ: Set Relative: ESC [ ? 6 l
  */
-void
+void ecb_cold
 rxvt_term::scr_relative_origin (int mode) NOTHROW
 {
   if (mode)
@@ -1661,7 +1663,7 @@ rxvt_term::scr_relative_origin (int mode) NOTHROW
  * XTERM_SEQ: Set Insert mode : ESC [ ? 4 h
  * XTERM_SEQ: Set Replace mode: ESC [ ? 4 l
  */
-void
+void ecb_cold
 rxvt_term::scr_insert_mode (int mode) NOTHROW
 {
   if (mode)
@@ -1677,7 +1679,7 @@ rxvt_term::scr_insert_mode (int mode) NOTHROW
  * XTERM_SEQ: Clear tab at current column: ESC [ 0 g
  * XTERM_SEQ: Clear all tabs             : ESC [ 3 g
  */
-void
+void ecb_cold
 rxvt_term::scr_set_tab (int mode) NOTHROW
 {
   if (mode < 0)
@@ -1707,7 +1709,7 @@ rxvt_term::scr_rvideo_mode (bool on) NOTHROW
 
       ::swap (pix_colors[Color_fg], pix_colors[Color_bg]);
 #ifdef HAVE_BG_PIXMAP
-      if (bg_pixmap == None)
+      if (bg_img == 0)
 #endif
           XSetWindowBackground (dpy, vt, pix_colors[Color_bg]);
 
@@ -1726,7 +1728,7 @@ rxvt_term::scr_rvideo_mode (bool on) NOTHROW
  * Report current cursor position
  * XTERM_SEQ: Report position: ESC [ 6 n
  */
-void
+void ecb_cold
 rxvt_term::scr_report_position () NOTHROW
 {
   tt_printf ("\033[%d;%dR", screen.cur.row + 1, screen.cur.col + 1);
@@ -1739,7 +1741,7 @@ rxvt_term::scr_report_position () NOTHROW
 /*
  * Set font style
  */
-void
+void ecb_cold
 rxvt_term::set_font_style () NOTHROW
 {
 #if 0
@@ -1771,7 +1773,7 @@ rxvt_term::set_font_style () NOTHROW
  * XTERM_SEQ: Invoke G2 character set: ESC N
  * XTERM_SEQ: Invoke G3 character set: ESC O
  */
-void
+void ecb_cold
 rxvt_term::scr_charset_choose (int set) NOTHROW
 {
   screen.charset = set;
@@ -1802,7 +1804,7 @@ rxvt_term::scr_charset_set (int set, unsigned int ch) NOTHROW
 /*
  * refresh matching text.
  */
-bool
+bool ecb_cold
 rxvt_term::scr_refresh_rend (rend_t mask, rend_t value) NOTHROW
 {
   bool found = false;
@@ -1831,7 +1833,7 @@ enum {
   RC_COUNT
 };
 
-void
+void ecb_hot
 rxvt_term::scr_expose (int x, int y, int ewidth, int eheight, bool refresh) NOTHROW
 {
   int i;
@@ -1967,7 +1969,7 @@ rxvt_term::scr_bell () NOTHROW
 }
 
 /* ------------------------------------------------------------------------- */
-void
+void ecb_cold
 rxvt_term::scr_printscreen (int fullhist) NOTHROW
 {
 #ifdef PRINTPIPE
@@ -2026,7 +2028,7 @@ rxvt_term::scr_printscreen (int fullhist) NOTHROW
  * drawn_text/drawn_rend contain the screen information before the update.
  * screen.text/screen.rend contain what the screen will change to.
  */
-void
+void ecb_hot
 rxvt_term::scr_refresh () NOTHROW
 {
   int16_t col, row,   /* column/row we're processing               */
@@ -2052,7 +2054,7 @@ rxvt_term::scr_refresh () NOTHROW
   unsigned int old_screen_flags = screen.flags;
   bool have_bg = 0;
 #ifdef HAVE_BG_PIXMAP
-  have_bg = bg_pixmap != None;
+  have_bg = bg_img != 0;
 #endif
   ocrow = oldcursor.row; /* is there an old outline cursor on screen? */
 
@@ -2483,7 +2485,7 @@ rxvt_term::scr_refresh () NOTHROW
                           Col2Pixel (col),
                           Row2Pixel (oldcursor.row),
                           (unsigned int) (Width2Pixel (cursorwidth) - 1),
-                          (unsigned int) (Height2Pixel (1) - lineSpace - 1));
+                          (unsigned int) (Height2Pixel (1) - 1));
         }
     }
 
@@ -2502,10 +2504,10 @@ rxvt_term::scr_refresh () NOTHROW
   num_scr_allow = 1;
 }
 
-void
+void ecb_cold
 rxvt_term::scr_remap_chars (line_t &l) NOTHROW
 {
-  if (!l.t)
+  if (!l.valid ())
     return;
 
   l.touch (); // maybe a bit of an overkill, but it's not performance-relevant
@@ -2514,7 +2516,7 @@ rxvt_term::scr_remap_chars (line_t &l) NOTHROW
     l.r[i] = SET_FONT (l.r[i], FONTSET (l.r[i])->find_font (l.t[i]));
 }
 
-void
+void ecb_cold
 rxvt_term::scr_remap_chars () NOTHROW
 {
   for (int i = total_rows; i--; )
@@ -2527,18 +2529,18 @@ rxvt_term::scr_remap_chars () NOTHROW
     }
 }
 
-void
+void ecb_cold
 rxvt_term::scr_recolour (bool refresh) NOTHROW
 {
   bool transparent = false;
 
 #ifdef HAVE_BG_PIXMAP
-  if (bg_pixmap != None)
+  if (bg_img != 0)
     {
-# ifdef ENABLE_TRANSPARENCY
+# if ENABLE_TRANSPARENCY
       if (bg_flags & BG_IS_TRANSPARENT)
         {
-          XSetWindowBackgroundPixmap (dpy, parent, bg_pixmap);
+          XSetWindowBackgroundPixmap (dpy, parent, bg_img->pm);
           XSetWindowBackgroundPixmap (dpy, vt, ParentRelative);
 
           transparent = true;
@@ -2547,7 +2549,7 @@ rxvt_term::scr_recolour (bool refresh) NOTHROW
 # endif
         {
           XSetWindowBackground (dpy, parent, pix_colors[Color_border]);
-          XSetWindowBackgroundPixmap (dpy, vt, bg_pixmap);
+          XSetWindowBackgroundPixmap (dpy, vt, bg_img->pm);
         }
     }
   else
@@ -2564,7 +2566,7 @@ rxvt_term::scr_recolour (bool refresh) NOTHROW
       if (transparent)
         XSetWindowBackgroundPixmap (dpy, scrollBar.win, ParentRelative);
       else
-        XSetWindowBackground (dpy, scrollBar.win, pix_colors[Color_border]);
+        XSetWindowBackground (dpy, scrollBar.win, pix_colors[scrollBar.color ()]);
       scrollBar.state = SB_STATE_IDLE;
       scrollBar.show (0);
     }
@@ -2640,7 +2642,7 @@ rxvt_term::scr_xor_span (int beg_row, int beg_col, int end_row, int end_col, ren
 }
 
 /* ------------------------------------------------------------------------- */
-void
+void ecb_hot
 rxvt_term::scr_reverse_selection () NOTHROW
 {
   if (selection.op
@@ -2941,7 +2943,7 @@ rxvt_term::selection_grab (Time tm, bool clipboard) NOTHROW
  * Mark or select text based upon number of clicks: 1, 2, or 3
  * EXT: button 1 press
  */
-void
+void ecb_cold
 rxvt_term::selection_click (int clicks, int x, int y) NOTHROW
 {
   clicks = ((clicks - 1) % 3) + 1;
@@ -2970,7 +2972,7 @@ rxvt_term::selection_click (int clicks, int x, int y) NOTHROW
 /*
  * Mark a selection at the specified col/row
  */
-void
+void ecb_cold
 rxvt_term::selection_start_colrow (int col, int row) NOTHROW
 {
   want_refresh = 1;
@@ -3007,7 +3009,7 @@ rxvt_term::selection_start_colrow (int col, int row) NOTHROW
     (unicode::is_space (x) ? 2 : (x) <= 0xff && !!strchr (rs[Rs_cutchars], (x)))
 #define DELIMIT_REND(x)        1
 
-void
+void ecb_cold
 rxvt_term::selection_delimit_word (enum page_dirn dirn, const row_col_t *mark, row_col_t *ret) NOTHROW
 {
   int col, row, dirnadd, tcol, trow, w1, w2;
@@ -3091,7 +3093,7 @@ rxvt_term::selection_delimit_word (enum page_dirn dirn, const row_col_t *mark, r
  * flag == 1 ==> button 3 press
  * flag == 2 ==> button 3 motion
  */
-void
+void ecb_cold
 rxvt_term::selection_extend (int x, int y, int flag) NOTHROW
 {
   int col = clamp (Pixel2Col (x), 0, ncol);
@@ -3127,7 +3129,7 @@ rxvt_term::selection_extend (int x, int y, int flag) NOTHROW
 /*
  * Extend the selection to the specified col/row
  */
-void
+void ecb_cold
 rxvt_term::selection_extend_colrow (int32_t col, int32_t row, int button3, int buttonpress, int clickchange) NOTHROW
 {
   row_col_t pos;
@@ -3328,7 +3330,7 @@ rxvt_term::selection_extend_colrow (int32_t col, int32_t row, int button3, int b
 }
 
 #if !ENABLE_MINIMAL
-void
+void ecb_cold
 rxvt_term::selection_remove_trailing_spaces () NOTHROW
 {
   int32_t end_col, end_row;
@@ -3376,7 +3378,7 @@ rxvt_term::selection_remove_trailing_spaces () NOTHROW
  * Double click on button 3 when already selected
  * EXT: button 3 double click
  */
-void
+void ecb_cold
 rxvt_term::selection_rotate (int x, int y) NOTHROW
 {
   selection.clicks = selection.clicks % 3 + 1;
@@ -3388,7 +3390,7 @@ rxvt_term::selection_rotate (int x, int y) NOTHROW
  * Respond to a request for our current selection
  * EXT: SelectionRequest
  */
-void
+void ecb_cold
 rxvt_term::selection_send (const XSelectionRequestEvent &rq) NOTHROW
 {
   Atom property = rq.property == None ? rq.target : rq.property;
@@ -3531,8 +3533,8 @@ rxvt_term::selection_send (const XSelectionRequestEvent &rq) NOTHROW
 }
 
 /* ------------------------------------------------------------------------- */
-#ifdef USE_XIM
-void
+#if USE_XIM
+void ecb_cold
 rxvt_term::im_set_position (XPoint &pos) NOTHROW
 {
   XWindowAttributes xwa;

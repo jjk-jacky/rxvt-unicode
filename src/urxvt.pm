@@ -2,7 +2,7 @@
 
 =head1 NAME
 
-@@RXVT_NAME@@perl - rxvt-unicode's embedded perl interpreter
+urxvtperl - rxvt-unicode's embedded perl interpreter
 
 =head1 SYNOPSIS
 
@@ -13,19 +13,19 @@
       ()
    }
 
-   # start a @@RXVT_NAME@@ using it:
+   # start a urxvt using it:
 
-   @@RXVT_NAME@@ --perl-lib $HOME -pe grab_test
+   urxvt --perl-lib $HOME -pe grab_test
 
 =head1 DESCRIPTION
 
 Every time a terminal object gets created, extension scripts specified via
 the C<perl> resource are loaded and associated with it.
 
-Scripts are compiled in a 'use strict' and 'use utf8' environment, and
+Scripts are compiled in a 'use strict "vars"' and 'use utf8' environment, and
 thus must be encoded as UTF-8.
 
-Each script will only ever be loaded once, even in @@RXVT_NAME@@d, where
+Each script will only ever be loaded once, even in urxvtd, where
 scripts will be shared (but not enabled) for all terminals.
 
 You can disable the embedded perl interpreter by setting both "perl-ext"
@@ -33,384 +33,20 @@ and "perl-ext-common" resources to the empty string.
 
 =head1 PREPACKAGED EXTENSIONS
 
-This section describes the extensions delivered with this release. You can
-find them in F<@@RXVT_LIBDIR@@/urxvt/perl/>.
+A number of extensions are delivered with this release. You can find them
+in F<< <libdir>/urxvt/perl/ >>, and the documentation can be viewed using
+F<< man urxvt-<EXTENSIONNAME> >>.
 
 You can activate them like this:
 
-  @@RXVT_NAME@@ -pe <extensionname>
+  urxvt -pe <extensionname>
 
 Or by adding them to the resource for extensions loaded by default:
 
   URxvt.perl-ext-common: default,selection-autotransform
 
-=over 4
-
-=item selection (enabled by default)
-
-(More) intelligent selection. This extension tries to be more intelligent
-when the user extends selections (double-click and further clicks). Right
-now, it tries to select words, urls and complete shell-quoted
-arguments, which is very convenient, too, if your F<ls> supports
-C<--quoting-style=shell>.
-
-A double-click usually selects the word under the cursor, further clicks
-will enlarge the selection.
-
-The selection works by trying to match a number of regexes and displaying
-them in increasing order of length. You can add your own regexes by
-specifying resources of the form:
-
-   URxvt.selection.pattern-0: perl-regex
-   URxvt.selection.pattern-1: perl-regex
-   ...
-
-The index number (0, 1...) must not have any holes, and each regex must
-contain at least one pair of capturing parentheses, which will be used for
-the match. For example, the following adds a regex that matches everything
-between two vertical bars:
-
-   URxvt.selection.pattern-0: \\|([^|]+)\\|
-
-Another example: Programs I use often output "absolute path: " at the
-beginning of a line when they process multiple files. The following
-pattern matches the filename (note, there is a single space at the very
-end):
-
-   URxvt.selection.pattern-0: ^(/[^:]+):\ 
-
-You can look at the source of the selection extension to see more
-interesting uses, such as parsing a line from beginning to end.
-
-This extension also offers following bindable keyboard commands:
-
-=over 4
-
-=item rot13
-
-Rot-13 the selection when activated. Used via keyboard trigger:
-
-   URxvt.keysym.C-M-r: perl:selection:rot13
-
-=back
-
-=item option-popup (enabled by default)
-
-Binds a popup menu to Ctrl-Button2 that lets you toggle (some) options at
-runtime.
-
-Other extensions can extend this popup menu by pushing a code reference
-onto C<@{ $term->{option_popup_hook} }>, which gets called whenever the
-popup is being displayed.
-
-Its sole argument is the popup menu, which can be modified.  It should
-either return nothing or a string, the initial boolean value and a code
-reference. The string will be used as button text and the code reference
-will be called when the toggle changes, with the new boolean value as
-first argument.
-
-The following will add an entry C<myoption> that changes
-C<< $self->{myoption} >>:
-
-   push @{ $self->{term}{option_popup_hook} }, sub {
-      ("my option" => $myoption, sub { $self->{myoption} = $_[0] })
-   };
-
-=item selection-popup (enabled by default)
-
-Binds a popup menu to Ctrl-Button3 that lets you convert the selection
-text into various other formats/action (such as uri unescaping, perl
-evaluation, web-browser starting etc.), depending on content.
-
-Other extensions can extend this popup menu by pushing a code reference
-onto C<@{ $term->{selection_popup_hook} }>, which gets called whenever the
-popup is being displayed.
-
-Its sole argument is the popup menu, which can be modified. The selection
-is in C<$_>, which can be used to decide whether to add something or not.
-It should either return nothing or a string and a code reference. The
-string will be used as button text and the code reference will be called
-when the button gets activated and should transform C<$_>.
-
-The following will add an entry C<a to b> that transforms all C<a>s in
-the selection to C<b>s, but only if the selection currently contains any
-C<a>s:
-
-   push @{ $self->{term}{selection_popup_hook} }, sub {
-      /a/ ? ("a to b" => sub { s/a/b/g }
-          : ()
-   };
-
-=item searchable-scrollback<hotkey> (enabled by default)
-
-Adds regex search functionality to the scrollback buffer, triggered
-by a hotkey (default: C<M-s>). While in search mode, normal terminal
-input/output is suspended and a regex is displayed at the bottom of the
-screen.
-
-Inputting characters appends them to the regex and continues incremental
-search. C<BackSpace> removes a character from the regex, C<Up> and C<Down>
-search upwards/downwards in the scrollback buffer, C<End> jumps to the
-bottom. C<Escape> leaves search mode and returns to the point where search
-was started, while C<Enter> or C<Return> stay at the current position and
-additionally stores the first match in the current line into the primary
-selection if the C<Shift> modifier is active.
-
-The regex defaults to "(?i)", resulting in a case-insensitive search. To
-get a case-sensitive search you can delete this prefix using C<BackSpace>
-or simply use an uppercase character which removes the "(?i)" prefix.
-
-See L<perlre> for more info about perl regular expression syntax.
-
-=item readline (enabled by default)
-
-A support package that tries to make editing with readline easier. At
-the moment, it reacts to clicking shift-left mouse button by trying to
-move the text cursor to this position. It does so by generating as many
-cursor-left or cursor-right keypresses as required (this only works
-for programs that correctly support wide characters).
-
-To avoid too many false positives, this is only done when:
-
-=over 4
-
-=item - the tty is in ICANON state.
-
-=item - the text cursor is visible.
-
-=item - the primary screen is currently being displayed.
-
-=item - the mouse is on the same (multi-row-) line as the text cursor.
-
-=back
-
-The normal selection mechanism isn't disabled, so quick successive clicks
-might interfere with selection creation in harmless ways.
-
-=item selection-autotransform
-
-This selection allows you to do automatic transforms on a selection
-whenever a selection is made.
-
-It works by specifying perl snippets (most useful is a single C<s///>
-operator) that modify C<$_> as resources:
-
-   URxvt.selection-autotransform.0: transform
-   URxvt.selection-autotransform.1: transform
-   ...
-
-For example, the following will transform selections of the form
-C<filename:number>, often seen in compiler messages, into C<vi +$filename
-$word>:
-
-   URxvt.selection-autotransform.0: s/^([^:[:space:]]+):(\\d+):?$/vi +$2 \\Q$1\\E\\x0d/
-
-And this example matches the same,but replaces it with vi-commands you can
-paste directly into your (vi :) editor:
-
-   URxvt.selection-autotransform.0: s/^([^:[:space:]]+(\\d+):?$/:e \\Q$1\\E\\x0d:$2\\x0d/
-
-Of course, this can be modified to suit your needs and your editor :)
-
-To expand the example above to typical perl error messages ("XXX at
-FILENAME line YYY."), you need a slightly more elaborate solution:
-
-   URxvt.selection.pattern-0: ( at .*? line \\d+[,.])
-   URxvt.selection-autotransform.0: s/^ at (.*?) line (\\d+)[,.]$/:e \\Q$1\E\\x0d:$2\\x0d/
-
-The first line tells the selection code to treat the unchanging part of
-every error message as a selection pattern, and the second line transforms
-the message into vi commands to load the file.
-
-=item tabbed
-
-This transforms the terminal into a tabbar with additional terminals, that
-is, it implements what is commonly referred to as "tabbed terminal". The topmost line
-displays a "[NEW]" button, which, when clicked, will add a new tab, followed by one
-button per tab.
-
-Clicking a button will activate that tab. Pressing B<Shift-Left> and
-B<Shift-Right> will switch to the tab left or right of the current one,
-while B<Shift-Down> creates a new tab.
-
-The tabbar itself can be configured similarly to a normal terminal, but
-with a resource class of C<URxvt.tabbed>. In addition, it supports the
-following four resources (shown with defaults):
-
-   URxvt.tabbed.tabbar-fg: <colour-index, default 3>
-   URxvt.tabbed.tabbar-bg: <colour-index, default 0>
-   URxvt.tabbed.tab-fg:    <colour-index, default 0>
-   URxvt.tabbed.tab-bg:    <colour-index, default 1>
-
-See I<COLOR AND GRAPHICS> in the @@RXVT_NAME@@(1) manpage for valid
-indices.
-
-=item matcher
-
-Uses per-line display filtering (C<on_line_update>) to underline text
-matching a certain pattern and make it clickable. When clicked with the
-mouse button specified in the C<matcher.button> resource (default 2, or
-middle), the program specified in the C<matcher.launcher> resource
-(default, the C<urlLauncher> resource, C<sensible-browser>) will be started
-with the matched text as first argument.  The default configuration is
-suitable for matching URLs and launching a web browser, like the
-former "mark-urls" extension.
-
-The default pattern to match URLs can be overridden with the
-C<matcher.pattern.0> resource, and additional patterns can be specified
-with numbered patterns, in a manner similar to the "selection" extension.
-The launcher can also be overridden on a per-pattern basis.
-
-It is possible to activate the most recently seen match or a list of matches
-from the keyboard.  Simply bind a keysym to "perl:matcher:last" or
-"perl:matcher:list" as seen in the example below.
-
-Example configuration:
-
-    URxvt.perl-ext:           default,matcher
-    URxvt.urlLauncher:        sensible-browser
-    URxvt.keysym.C-Delete:    perl:matcher:last
-    URxvt.keysym.M-Delete:    perl:matcher:list
-    URxvt.matcher.button:     1
-    URxvt.matcher.pattern.1:  \\bwww\\.[\\w-]+\\.[\\w./?&@#-]*[\\w/-]
-    URxvt.matcher.pattern.2:  \\B(/\\S+?):(\\d+)(?=:|$)
-    URxvt.matcher.launcher.2: gvim +$2 $1
-
-=item xim-onthespot
-
-This (experimental) perl extension implements OnTheSpot editing. It does
-not work perfectly, and some input methods don't seem to work well with
-OnTheSpot editing in general, but it seems to work at least for SCIM and
-kinput2.
-
-You enable it by specifying this extension and a preedit style of
-C<OnTheSpot>, i.e.:
-
-   @@RXVT_NAME@@ -pt OnTheSpot -pe xim-onthespot
-
-=item kuake<hotkey>
-
-A very primitive quake-console-like extension. It was inspired by a
-description of how the programs C<kuake> and C<yakuake> work: Whenever the
-user presses a global accelerator key (by default C<F10>), the terminal
-will show or hide itself. Another press of the accelerator key will hide
-or show it again.
-
-Initially, the window will not be shown when using this extension.
-
-This is useful if you need a single terminal that is not using any desktop
-space most of the time but is quickly available at the press of a key.
-
-The accelerator key is grabbed regardless of any modifiers, so this
-extension will actually grab a physical key just for this function.
-
-If you want a quake-like animation, tell your window manager to do so
-(fvwm can do it).
-
-=item overlay-osc
-
-This extension implements some OSC commands to display timed popups on the
-screen - useful for status displays from within scripts. You have to read
-the sources for more info.
-
-=item block-graphics-to-ascii
-
-A not very useful example of filtering all text output to the terminal
-by replacing all line-drawing characters (U+2500 .. U+259F) by a
-similar-looking ascii character.
-
-=item digital-clock
-
-Displays a digital clock using the built-in overlay.
-
-=item remote-clipboard
-
-Somewhat of a misnomer, this extension adds two menu entries to the
-selection popup that allows one to run external commands to store the
-selection somewhere and fetch it again.
-
-We use it to implement a "distributed selection mechanism", which just
-means that one command uploads the file to a remote server, and another
-reads it.
-
-The commands can be set using the C<URxvt.remote-selection.store> and
-C<URxvt.remote-selection.fetch> resources. The first should read the
-selection to store from STDIN (always in UTF-8), the second should provide
-the selection data on STDOUT (also in UTF-8).
-
-The defaults (which are likely useless to you) use rsh and cat:
-
-   URxvt.remote-selection.store: rsh ruth 'cat >/tmp/distributed-selection'
-   URxvt.remote-selection.fetch: rsh ruth 'cat /tmp/distributed-selection'
-
-=item selection-pastebin
-
-This is a little rarely useful extension that uploads the selection as
-textfile to a remote site (or does other things). (The implementation is
-not currently secure for use in a multiuser environment as it writes to
-F</tmp> directly.).
-
-It listens to the C<selection-pastebin:remote-pastebin> keyboard command,
-i.e.
-
-   URxvt.keysym.C-M-e: perl:selection-pastebin:remote-pastebin
-
-Pressing this combination runs a command with C<%> replaced by the name of
-the textfile. This command can be set via a resource:
-
-   URxvt.selection-pastebin.cmd: rsync -apP % ruth:/var/www/www.ta-sa.org/files/txt/.
-
-And the default is likely not useful to anybody but the few people around
-here :)
-
-The name of the textfile is the hex encoded md5 sum of the selection, so
-the same content should lead to the same filename.
-
-After a successful upload the selection will be replaced by the text given
-in the C<selection-pastebin-url> resource (again, the % is the placeholder
-for the filename):
-
-   URxvt.selection-pastebin.url: http://www.ta-sa.org/files/txt/%
-
-I<Note to xrdb users:> xrdb uses the C preprocessor, which might interpret
-the double C</> characters as comment start. Use C<\057\057> instead,
-which works regardless of whether xrdb is used to parse the resource file
-or not.
-
-=item macosx-clipboard and macosx-clipboard-native
-
-These two modules implement an extended clipboard for Mac OS X. They are
-used like this:
-
-   URxvt.perl-ext-common: default,macosx-clipboard
-   URxvt.keysym.M-c: perl:macosx-clipboard:copy
-   URxvt.keysym.M-v: perl:macosx-clipboard:paste
-
-The difference between them is that the native variant requires a
-perl from apple's devkit or so, and C<macosx-clipboard> requires the
-C<Mac::Pasteboard> module, works with other perls, has fewer bugs, is
-simpler etc. etc.
-
-=item example-refresh-hooks
-
-Displays a very simple digital clock in the upper right corner of the
-window. Illustrates overwriting the refresh callbacks to create your own
-overlays or changes.
-
-=item confirm-paste
-
-Displays a confirmation dialog when a paste containing at least a full
-line is detected.
-
-=item bell-command
-
-Runs the command specified by the C<URxvt.bell-command> resource when
-a bell event occurs. For example, the following pops up a notification
-bubble with the text "Beep, Beep" using notify-send:
-
-   URxvt.bell-command: notify-send "Beep, Beep"
-
-=back
+Extensions that add command line parameters or resources on their own are
+loaded automatically when used.
 
 =head1 API DOCUMENTATION
 
@@ -469,26 +105,8 @@ internal use.
 Although it isn't a C<urxvt::term> object, you can call all methods of the
 C<urxvt::term> class on this object.
 
-It has the following methods and data members:
-
-=over 4
-
-=item $urxvt_term = $self->{term}
-
-Returns the C<urxvt::term> object associated with this instance of the
-extension. This member I<must not> be changed in any way.
-
-=item $self->enable ($hook_name => $cb, [$hook_name => $cb..])
-
-Dynamically enable the given hooks (named without the C<on_> prefix) for
-this extension, replacing any previous hook. This is useful when you want
-to overwrite time-critical hooks only temporarily.
-
-=item $self->disable ($hook_name[, $hook_name..])
-
-Dynamically disable the given hooks.
-
-=back
+Additional methods only supported for extension objects are described in
+the C<urxvt::extension> section below.
 
 =head2 Hooks
 
@@ -669,7 +287,7 @@ Called just after the screen gets redrawn. See C<on_refresh_begin>.
 
 Called whenever a user-configured event is being activated (e.g. via
 a C<perl:string> action bound to a key, see description of the B<keysym>
-resource in the @@RXVT_NAME@@(1) manpage).
+resource in the urxvt(1) manpage).
 
 The event is simply the action string. This interface is assumed to change
 slightly in the future.
@@ -757,15 +375,15 @@ Called on receipt of a bell character.
 package urxvt;
 
 use utf8;
-use strict;
+use strict 'vars';
 use Carp ();
 use Scalar::Util ();
 use List::Util ();
 
 our $VERSION = 1;
 our $TERM;
-our @TERM_INIT;
-our @TERM_EXT;
+our @TERM_INIT; # should go, prevents async I/O etc.
+our @TERM_EXT;  # should go, prevents async I/O etc.
 our @HOOKNAME;
 our %HOOKTYPE = map +($HOOKNAME[$_] => $_), 0..$#HOOKNAME;
 our %OPTION;
@@ -945,6 +563,66 @@ BEGIN {
 
 no warnings 'utf8';
 
+sub parse_resource {
+   my ($term, $name, $isarg, $longopt, $flag, $value) = @_;
+
+   $name =~ y/-/./ if $isarg;
+
+   $term->scan_meta;
+
+   my $r = $term->{meta}{resource};
+   keys %$r; # reste iterator
+   while (my ($pattern, $v) = each %$r) {
+      if (
+         $pattern =~ /\.$/
+         ? $pattern eq substr $name, 0, length $pattern
+         : $pattern eq $name
+      ) {
+         $name = "$urxvt::RESCLASS.$name";
+
+         push @{ $term->{perl_ext_3} }, $v->[0];
+
+         if ($v->[1] eq "boolean") {
+            $term->put_option_db ($name, $flag ? "true" : "false");
+            return 1;
+         } else {
+            $term->put_option_db ($name, $value);
+            return 1 + 2;
+         }
+      }
+   }
+
+   0
+}
+
+sub usage {
+   my ($term, $usage_type) = @_;
+
+   $term->scan_meta;
+
+   my $r = $term->{meta}{resource};
+
+   for my $pattern (sort keys %$r) {
+      my ($ext, $type, $desc) = @{ $r->{$pattern} };
+
+      $desc .= " (-pe $ext)";
+
+      if ($usage_type == 1) {
+         $pattern =~ y/./-/;
+         $pattern =~ s/-$/-.../g;
+
+         if ($type eq "boolean") {
+            urxvt::log sprintf "  -%-30s %s\n", "/+$pattern", $desc;
+         } else {
+            urxvt::log sprintf "  -%-30s %s\n", "$pattern $type", $desc;
+         }
+      } else {
+         $pattern =~ s/\.$/.*/g;
+         urxvt::log sprintf "  %-31s %s\n", "$pattern:", $type;
+      }
+   }
+}
+
 my $verbosity = $ENV{URXVT_PERL_VERBOSITY};
 
 sub verbose {
@@ -966,11 +644,13 @@ sub extension_package($) {
 
       verbose 3, "loading extension '$path' into package '$pkg'";
 
+      (${"$pkg\::_NAME"} = $path) =~ s/^.*[\\\/]//; # hackish
+
       open my $fh, "<:raw", $path
          or die "$path: $!";
 
       my $source =
-         "package $pkg; use strict; use utf8; no warnings 'utf8';\n"
+         "package $pkg; use strict 'vars'; use utf8; no warnings 'utf8';\n"
          . "#line 1 \"$path\"\n{\n"
          . (do { local $/; <$fh> })
          . "\n};\n1";
@@ -990,7 +670,7 @@ sub invoke {
    my $htype = shift;
 
    if ($htype == 0) { # INIT
-      my @dirs = ((split /:/, $TERM->resource ("perl_lib")), "$ENV{HOME}/.urxvt/ext", "$LIBDIR/perl");
+      my @dirs = $TERM->perl_libdirs;
 
       my %ext_arg;
 
@@ -1003,7 +683,10 @@ sub invoke {
          $TERM->register_package ($_) for @pkg;
       }
 
-      for (grep $_, map { split /,/, $TERM->resource ("perl_ext_$_") } 1, 2) {
+      for (
+         @{ delete $TERM->{perl_ext_3} },
+         grep $_, map { split /,/, $TERM->resource ("perl_ext_$_") } 1, 2
+      ) {
          if ($_ eq "default") {
             $ext_arg{$_} ||= [] for qw(selection option-popup selection-popup searchable-scrollback readline);
          } elsif (/^-(.*)$/) {
@@ -1036,7 +719,7 @@ sub invoke {
          if $verbosity >= 10;
 
       for my $pkg (keys %$cb) {
-         my $retval_ = eval { $cb->{$pkg}->($TERM->{_pkg}{$pkg}, @_) };
+         my $retval_ = eval { $cb->{$pkg}->($TERM->{_pkg}{$pkg} || $TERM, @_) };
          $retval ||= $retval_;
 
          if ($@) {
@@ -1089,9 +772,74 @@ sub rend2mask {
    ($mask, @color{qw(fg bg)}, \@failed)
 }
 
-# urxvt::term::extension
-
 package urxvt::term::extension;
+
+=head2 The C<urxvt::term::extension> class
+
+Each extension attached to a terminal object is represented by
+a C<urxvt::term::extension> object.
+
+You can use these objects, which are passed to all callbacks to store any
+state related to the terminal and extension instance.
+
+The methods (And data members) documented below can be called on extension
+objects, in addition to call methods documented for the <urxvt::term>
+class.
+
+=over 4
+
+=item $urxvt_term = $self->{term}
+
+Returns the C<urxvt::term> object associated with this instance of the
+extension. This member I<must not> be changed in any way.
+
+=cut
+
+our $AUTOLOAD;
+
+sub AUTOLOAD {
+   $AUTOLOAD =~ /:([^:]+)$/
+      or die "FATAL: \$AUTOLOAD '$AUTOLOAD' unparsable";
+
+   eval qq{
+      sub $AUTOLOAD {
+         my \$proxy = shift;
+         \$proxy->{term}->$1 (\@_)
+      }
+      1
+   } or die "FATAL: unable to compile method forwarder: $@";
+
+   goto &$AUTOLOAD;
+}
+
+sub DESTROY {
+   # nop
+}
+
+# urxvt::destroy_hook (basically a cheap Guard:: implementation)
+
+sub urxvt::destroy_hook::DESTROY {
+   ${$_[0]}->();
+}
+
+sub urxvt::destroy_hook(&) {
+   bless \shift, urxvt::destroy_hook::
+}
+
+=item $self->enable ($hook_name => $cb[, $hook_name => $cb..])
+
+Dynamically enable the given hooks (named without the C<on_> prefix) for
+this extension, replacing any previous hook. This is useful when you want
+to overwrite time-critical hooks only temporarily.
+
+To install additional callbacks for the same hook, you can use the C<on>
+method of the C<urxvt::term> class.
+
+=item $self->disable ($hook_name[, $hook_name..])
+
+Dynamically disable the given hooks.
+
+=cut
 
 sub enable {
    my ($self, %hook) = @_;
@@ -1123,36 +871,71 @@ sub disable {
    }
 }
 
-our $AUTOLOAD;
+=item $guard = $self->on ($hook_name => $cb[, $hook_name => $cb..])
 
-sub AUTOLOAD {
-   $AUTOLOAD =~ /:([^:]+)$/
-      or die "FATAL: \$AUTOLOAD '$AUTOLOAD' unparsable";
+Similar to the C<enable> enable, but installs additional callbacks for
+the given hook(s) (that is, it doesn't replace existing callbacks), and
+returns a guard object. When the guard object is destroyed the callbacks
+are disabled again.
 
-   eval qq{
-      sub $AUTOLOAD {
-         my \$proxy = shift;
-         \$proxy->{term}->$1 (\@_)
-      }
-      1
-   } or die "FATAL: unable to compile method forwarder: $@";
+=cut
 
-   goto &$AUTOLOAD;
+sub urxvt::extension::on_disable::DESTROY {
+   my $disable = shift;
+
+   my $term = delete $disable->{""};
+
+   while (my ($htype, $id) = each %$disable) {
+      delete $term->{_hook}[$htype]{$id};
+      $term->set_should_invoke ($htype, -1);
+   }
 }
 
-sub DESTROY {
-   # nop
+sub on {
+   my ($self, %hook) = @_;
+
+   my $term = $self->{term};
+
+   my %disable = ( "" => $term );
+
+   while (my ($name, $cb) = each %hook) {
+      my $htype = $HOOKTYPE{uc $name};
+      defined $htype
+         or Carp::croak "unsupported hook type '$name'";
+
+      $term->set_should_invoke ($htype, +1);
+      $term->{_hook}[$htype]{ $disable{$htype} = $cb+0 }
+         = sub { shift; $cb->($self, @_) }; # very ugly indeed
+   }
+
+   bless \%disable, "urxvt::extension::on_disable"
 }
 
-# urxvt::destroy_hook
+=item $self->x_resource ($pattern)
 
-sub urxvt::destroy_hook::DESTROY {
-   ${$_[0]}->();
+=item $self->x_resource_boolean ($pattern)
+
+These methods support an additional C<%> prefix when called on an
+extension object - see the description of these methods in the
+C<urxvt::term> class for details.
+
+=cut
+
+sub x_resource {
+   my ($self, $name) = @_;
+   $name =~ s/^%(\.|$)/$_[0]{_name}$1/;
+   $self->{term}->x_resource ($name)
 }
 
-sub urxvt::destroy_hook(&) {
-   bless \shift, urxvt::destroy_hook::
+sub x_resource_boolean {
+   my ($self, $name) = @_;
+   $name =~ s/^%(\.|$)/$_[0]{_name}$1/;
+   $self->{term}->x_resource_boolean ($name)
 }
+
+=back
+
+=cut
 
 package urxvt::anyevent;
 
@@ -1161,9 +944,10 @@ package urxvt::anyevent;
 The sole purpose of this class is to deliver an interface to the
 C<AnyEvent> module - any module using it will work inside urxvt without
 further programming. The only exception is that you cannot wait on
-condition variables, but non-blocking condvar use is ok. What this means
-is that you cannot use blocking APIs, but the non-blocking variant should
-work.
+condition variables, but non-blocking condvar use is ok.
+
+In practical terms this means is that you cannot use blocking APIs, but
+the non-blocking variant should work.
 
 =cut
 
@@ -1257,8 +1041,9 @@ sub register_package {
    @{"$pkg\::ISA"} = urxvt::term::extension::;
 
    my $proxy = bless {
-      _pkg => $pkg,
-      argv => $argv,
+      _pkg  => $pkg,
+      _name => ${"$pkg\::_NAME"}, # hackish
+      argv  => $argv,
    }, $pkg;
    Scalar::Util::weaken ($proxy->{term} = $self);
 
@@ -1267,6 +1052,52 @@ sub register_package {
    for my $name (@HOOKNAME) {
       if (my $ref = $pkg->can ("on_" . lc $name)) {
          $proxy->enable ($name => $ref);
+      }
+   }
+}
+
+sub perl_libdirs {
+   map { split /:/ }
+      $_[0]->resource ("perl_lib"),
+      $ENV{URXVT_PERL_LIB},
+      "$ENV{HOME}/.urxvt/ext",
+      "$LIBDIR/perl"
+}
+
+sub scan_meta {
+   my ($self) = @_;
+   my @libdirs = perl_libdirs $self;
+
+   return if $self->{meta_libdirs} eq join "\x00", @libdirs;
+
+   my %meta;
+
+   $self->{meta_libdirs} = join "\x00", @libdirs;
+   $self->{meta}         = \%meta;
+
+   for my $dir (reverse @libdirs) {
+      opendir my $fh, $dir
+         or next;
+      for my $ext (readdir $fh) {
+         $ext !~ /^\./
+            and open my $fh, "<", "$dir/$ext"
+            or next;
+
+         while (<$fh>) {
+            if (/^#:META:X_RESOURCE:(.*)/) {
+               my ($pattern, $type, $desc) = split /:/, $1;
+               $pattern =~ s/^%(\.|$)/$ext$1/g; # % in pattern == extension name
+               if ($pattern =~ /[^a-zA-Z0-9\-\.]/) {
+                  warn "$dir/$ext: meta resource '$pattern' contains illegal characters (not alphanumeric nor . nor *)\n";
+               } else {
+                  $meta{resource}{$pattern} = [$ext, $type, $desc];
+               }
+            } elsif (/^\s*(?:#|$)/) {
+               # skip other comments and empty lines
+            } else {
+               last; # stop parsing on first non-empty non-comment line
+            }
+         }
       }
    }
 }
@@ -1297,7 +1128,7 @@ sub new {
 =item $term->destroy
 
 Destroy the terminal object (close the window, free resources
-etc.). Please note that @@RXVT_NAME@@ will not exit as long as any event
+etc.). Please note that urxvt will not exit as long as any event
 watchers (timers, io watchers) are still active.
 
 =item $term->exec_async ($cmd[, @args])
@@ -1363,7 +1194,7 @@ Here is a likely non-exhaustive list of resource names, not all of which
 are supported in every build, please see the source file F</src/rsinc.h>
 to see the actual list:
 
-  answerbackstring backgroundPixmap backspace_key blendtype blurradius
+  answerbackstring backgroundPixmap backspace_key blurradius
   boldFont boldItalicFont borderLess buffered chdir color cursorBlink
   cursorUnderline cutchars delete_key depth display_name embed ext_bwidth
   fade font geometry hold iconName iconfile imFont imLocale inputMethod
@@ -1393,14 +1224,40 @@ class name, i.e.  C<< $term->x_resource ("boldFont") >> should return the
 same value as used by this instance of rxvt-unicode. Returns C<undef> if no
 resource with that pattern exists.
 
+Extensions that define extra resource or command line arguments also need
+to call this method to access their values.
+
+If the method is called on an extension object (basically, from an
+extension), then the special prefix C<%.> will be replaced by the name of
+the extension and a dot, and the lone string C<%> will be replaced by the
+extension name itself. This makes it possible to code extensions so you
+can rename them and get a new set of commandline switches and resources
+without having to change the actual code.
+
 This method should only be called during the C<on_start> hook, as there is
 only one resource database per display, and later invocations might return
 the wrong resources.
 
+=item $value = $term->x_resource_boolean ($pattern)
+
+Like C<x_resource>, above, but interprets the string value as a boolean
+and returns C<1> for true values, C<0> for false values and C<undef> if
+the resource or option isn't specified.
+
+You should always use this method to parse boolean resources.
+
+=cut
+
+sub x_resource_boolean {
+   my $res = &x_resource;
+
+   $res =~ /^\s*(?:true|yes|on|1)\s*$/i ? 1 : defined $res && 0
+}
+
 =item $success = $term->parse_keysym ($key, $octets)
 
 Adds a key binding exactly as specified via a resource. See the
-C<keysym> resource in the @@RXVT_NAME@@(1) manpage.
+C<keysym> resource in the urxvt(1) manpage.
 
 =item $term->register_command ($keysym, $modifiermask, $string)
 
