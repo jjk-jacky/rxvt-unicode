@@ -28,8 +28,19 @@ TODO: pack rxvt_fatal messages into the exception object
 TODO: load must not cache, but global image cache must be cleaned
 TODO: provide something like % for easy access for parse_keysym
 TODO: description into --help output?
-TODO: shade
 TODO: rxvt -help => (see rxvt-XXX(1))?
+
+9.17 Fri Mar  1 13:46:08 CET 2013
+	- add shade operator in background perl extension.
+        - avoid starting or ending the selection in the middle of wide
+          characters to avoid artifacts (reproted by Tiago Resende).
+	- fix artifacts that may occur if the character in the cursor
+	  cell has width > 1 (reported by Tiago Resende).
+	- fix regression that causes artifacts on scrolling if
+	  saveLines is 0 and the window is resized (reported by Bert
+	  Münnich).
+	- fix build when perl is enabled and pixbuf and transparency
+	  are disabled.
 
 9.16 Thu Dec 27 11:56:43 CET 2012
 	- the "so much new stuff your eyes will pop out" release.

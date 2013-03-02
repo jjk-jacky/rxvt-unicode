@@ -152,6 +152,16 @@ rxvt_term::scr_kill_char (line_t &l, int col) const NOTHROW
   } while (col < ncol && l.t[col] == NOCHAR);
 }
 
+// set the rendition of a single wide character beginning at the given column
+void
+rxvt_term::scr_set_char_rend (line_t &l, int col, rend_t rend)
+{
+  do {
+    l.r[col] = rend;
+    col++;
+  } while (col < ncol && l.t[col] == NOCHAR);
+}
+
 /* ------------------------------------------------------------------------- *
  *                          SCREEN INITIALISATION                            *
  * ------------------------------------------------------------------------- */
@@ -188,6 +198,16 @@ rxvt_term::scr_alloc () NOTHROW
   drawn_buf = (line_t *)chunk;
   swap_buf  = drawn_buf + nrow;
   row_buf   = swap_buf  + nrow;
+}
+
+void
+rxvt_term::copy_line (line_t &dst, line_t &src)
+{
+  scr_blank_screen_mem (dst, DEFAULT_RSTYLE);
+  dst.l = min (src.l, ncol);
+  memcpy (dst.t, src.t, sizeof (text_t) * dst.l);
+  memcpy (dst.r, src.r, sizeof (rend_t) * dst.l);
+  dst.f = src.f;
 }
 
 void ecb_cold
@@ -232,8 +252,6 @@ rxvt_term::scr_reset ()
   line_t *prev_swap_buf  = swap_buf;
   line_t *prev_row_buf   = row_buf;
 
-  int common_col = min (prev_ncol, ncol);
-
   scr_alloc ();
 
   if (!prev_row_buf)
@@ -277,13 +295,8 @@ rxvt_term::scr_reset ()
 
       for (int row = min (nrow, prev_nrow); row--; )
         {
-          scr_blank_screen_mem (drawn_buf [row], DEFAULT_RSTYLE);
-          scr_blank_screen_mem (swap_buf  [row], DEFAULT_RSTYLE);
-
-          memcpy (drawn_buf [row].t, prev_drawn_buf [row].t, sizeof (text_t) * common_col);
-          memcpy (drawn_buf [row].r, prev_drawn_buf [row].r, sizeof (rend_t) * common_col);
-          memcpy (swap_buf  [row].t, prev_swap_buf  [row].t, sizeof (text_t) * common_col);
-          memcpy (swap_buf  [row].r, prev_swap_buf  [row].r, sizeof (rend_t) * common_col);
+          copy_line (drawn_buf [row], prev_drawn_buf [row]);
+          copy_line (swap_buf [row], prev_swap_buf [row]);
         }
 
       int p    = MOD (term_start + prev_nrow, prev_total_rows);  // previous row
@@ -388,10 +401,7 @@ rxvt_term::scr_reset ()
               line_t &src = prev_row_buf [MOD (term_start + row, prev_total_rows)];
               line_t &dst = row_buf [row];
 
-              scr_blank_screen_mem (dst, DEFAULT_RSTYLE);
-
-              memcpy (dst.t, src.t, sizeof (text_t) * common_col);
-              memcpy (dst.r, src.r, sizeof (rend_t) * common_col);
+              copy_line (dst, src);
             }
 
           for (int row = prev_nrow; row < nrow; row++)
@@ -1708,7 +1718,7 @@ rxvt_term::scr_rvideo_mode (bool on) NOTHROW
       rvideo_state = on;
 
       ::swap (pix_colors[Color_fg], pix_colors[Color_bg]);
-#ifdef HAVE_BG_PIXMAP
+#ifdef HAVE_IMG
       if (bg_img == 0)
 #endif
           XSetWindowBackground (dpy, vt, pix_colors[Color_bg]);
@@ -2034,12 +2044,10 @@ rxvt_term::scr_refresh () NOTHROW
   int16_t col, row,   /* column/row we're processing               */
           ocrow;      /* old cursor row                            */
   int i;              /* tmp                                       */
-#ifndef NO_CURSORCOLOR
-  rend_t cc1;         /* store colours at cursor position (s)      */
-#endif
-  rend_t *crp;        // cursor rendition pointer
   rend_t ccol1,  /* Cursor colour       */
          ccol2;  /* Cursor colour2      */
+  rend_t cur_rend;
+  int cur_col;
 
   want_refresh = 0;        /* screen is current */
 
@@ -2053,7 +2061,7 @@ rxvt_term::scr_refresh () NOTHROW
 
   unsigned int old_screen_flags = screen.flags;
   bool have_bg = 0;
-#ifdef HAVE_BG_PIXMAP
+#ifdef HAVE_IMG
   have_bg = bg_img != 0;
 #endif
   ocrow = oldcursor.row; /* is there an old outline cursor on screen? */
@@ -2088,10 +2096,10 @@ rxvt_term::scr_refresh () NOTHROW
         while (col && ROW(screen.cur.row).t[col] == NOCHAR)
           col--;
 
-        crp = &ROW(screen.cur.row).r[col];
+        cur_rend = ROW(screen.cur.row).r[col];
+        cur_col = col;
 
 #ifndef NO_CURSORCOLOR
-        cc1 = *crp & (RS_fgMask | RS_bgMask);
         if (ISSET_PIXCOLOR (Color_cursor))
           ccol1 = Color_cursor;
         else
@@ -2115,14 +2123,18 @@ rxvt_term::scr_refresh () NOTHROW
 
         if (focus)
           {
+            rend_t rend = cur_rend;
+
             if (option (Opt_cursorUnderline))
-              *crp ^= RS_Uline;
+              rend ^= RS_Uline;
             else
               {
-                *crp ^= RS_RVid;
-                *crp = SET_FGCOLOR (*crp, ccol1);
-                *crp = SET_BGCOLOR (*crp, ccol2);
+                rend ^= RS_RVid;
+                rend = SET_FGCOLOR (rend, ccol1);
+                rend = SET_BGCOLOR (rend, ccol2);
               }
+
+            scr_set_char_rend (ROW(screen.cur.row), cur_col, rend);
           }
       }
 
@@ -2451,17 +2463,7 @@ rxvt_term::scr_refresh () NOTHROW
   if (showcursor)
     {
       if (focus)
-        {
-          if (option (Opt_cursorUnderline))
-            *crp ^= RS_Uline;
-          else
-            {
-              *crp ^= RS_RVid;
-#ifndef NO_CURSORCOLOR
-              *crp = (*crp & ~ (RS_fgMask | RS_bgMask)) | cc1;
-#endif
-            }
-        }
+        scr_set_char_rend (ROW(screen.cur.row), cur_col, cur_rend);
       else if (oldcursor.row >= 0)
         {
           int cursorwidth = 1;
@@ -2534,7 +2536,7 @@ rxvt_term::scr_recolour (bool refresh) NOTHROW
 {
   bool transparent = false;
 
-#ifdef HAVE_BG_PIXMAP
+#ifdef HAVE_IMG
   if (bg_img != 0)
     {
 # if ENABLE_TRANSPARENCY
@@ -2693,6 +2695,20 @@ rxvt_term::selection_check (int check_more) NOTHROW
           && !ROWCOL_IS_BEFORE (screen.cur, selection.beg)
           && ROWCOL_IS_BEFORE (screen.cur, selection.end)))
     CLEAR_ALL_SELECTION ();
+}
+
+void
+rxvt_term::selection_changed () NOTHROW
+{
+  line_t &r1 = ROW (selection.beg.row);
+  while (selection.beg.col >    0 && r1.t [selection.beg.col] == NOCHAR)
+    --selection.beg.col;
+
+  line_t &r2 = ROW (selection.end.row);
+  while (selection.end.col < r2.l && r2.t [selection.end.col] == NOCHAR)
+    ++selection.end.col;
+
+  want_refresh = 1;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -3005,7 +3021,7 @@ rxvt_term::selection_start_colrow (int col, int row) NOTHROW
  */
 
 /* what do we want: spaces/tabs are delimiters or cutchars or non-cutchars */
-#define DELIMIT_TEXT(x) 		\
+#define DELIMIT_TEXT(x)		\
     (unicode::is_space (x) ? 2 : (x) <= 0xff && !!strchr (rs[Rs_cutchars], (x)))
 #define DELIMIT_REND(x)        1
 
@@ -3136,8 +3152,6 @@ rxvt_term::selection_extend_colrow (int32_t col, int32_t row, int button3, int b
   enum {
     LEFT, RIGHT
   } closeto = RIGHT;
-
-  want_refresh = 1;
 
   switch (selection.op)
     {
@@ -3327,6 +3341,8 @@ rxvt_term::selection_extend_colrow (int32_t col, int32_t row, int button3, int b
   if (selection.rect && selection.beg.col > selection.end.col)
     ::swap (selection.beg.col, selection.end.col);
 #endif
+
+  selection_changed ();
 }
 
 #if !ENABLE_MINIMAL
