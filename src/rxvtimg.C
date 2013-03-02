@@ -535,7 +535,7 @@ rxvt_img::blur (int rh, int rv)
   Display *dpy = s->dpy;
   int size = max (rh, rv) * 2 + 1;
   nv *kernel = (nv *)malloc (size * sizeof (nv));
-  XFixed *params = (XFixed *)malloc ((size + 2) * sizeof (XFixed));
+  XFixed *params = rxvt_temp_buf<XFixed> (size + 2);
   rxvt_img *img = new_empty ();
 
   XRenderPictureAttributes pa;
@@ -580,7 +580,6 @@ rxvt_img::blur (int rh, int rv)
     }
 
   free (kernel);
-  free (params);
 
   XRenderFreePicture (dpy, src);
   XRenderFreePicture (dpy, dst);
@@ -914,6 +913,40 @@ rxvt_img::tint (const rgba &c)
   XRenderComposite (cc.dpy, PictOpSrc, cc.src, cc.msk, cc.dst, 0, 0, 0, 0, 0, 0, w, h);
 
   return cc;
+}
+
+rxvt_img *
+rxvt_img::shade (nv factor, rgba c)
+{
+  clamp_it (factor, -1., 1.);
+  factor++;
+
+  if (factor > 1)
+    {
+      c.r = c.r * (2 - factor);
+      c.g = c.g * (2 - factor);
+      c.b = c.b * (2 - factor);
+    }
+  else
+    {
+      c.r = c.r * factor;
+      c.g = c.g * factor;
+      c.b = c.b * factor;
+    }
+
+  rxvt_img *img = this->tint (c);
+
+  if (factor > 1)
+    {
+      c.a = 0xffff;
+      c.r =
+      c.g =
+      c.b = 0xffff * (factor - 1);
+
+      img->brightness (c.r, c.g, c.b, c.a);
+    }
+
+  return img;
 }
 
 rxvt_img *

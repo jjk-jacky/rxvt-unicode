@@ -59,6 +59,7 @@ typedef int		render_repeat_mode;
 #if HAVE_PIXBUF
 typedef GdkPixbuf *	urxvt__pixbuf;
 #endif
+#if HAVE_IMG
 typedef rxvt_img *	urxvt__img;
 typedef rxvt_img::nv	rxvt_img__nv;
 
@@ -107,6 +108,7 @@ parse_rgba (SV *sv, rxvt_screen *s = 0)
 }
 
 /////////////////////////////////////////////////////////////////////////////
+#endif
 
 static wchar_t *
 sv2wcs (SV *sv)
@@ -1879,7 +1881,7 @@ rxvt_term::screen_cur (...)
               {
                 THIS->selection.screen = THIS->current_screen;
 
-                THIS->want_refresh = 1;
+                THIS->selection_changed ();
                 THIS->refresh_check ();
               }
           }
@@ -2203,13 +2205,12 @@ rxvt_term::new_img_from_file (octet_string filename)
 
 #endif
 
-#if HAVE_BG_PIXMAP
-
 void
 rxvt_term::set_background (rxvt_img *img, bool border = false)
 	CODE:
-        THIS->bg_destroy ();
-        THIS->bg_flags &= ~(rxvt_term::BG_NEEDS_REFRESH | rxvt_term::BG_INHIBIT_RENDER | rxvt_term::BG_IS_TRANSPARENT);
+        delete THIS->bg_img;
+        THIS->bg_img = 0;
+        THIS->bg_flags = 0;
 
         if (img) // TODO: cannot be false
           {
@@ -2234,8 +2235,6 @@ rxvt_term::set_background (rxvt_img *img, bool border = false)
             if (!border)
               THIS->bg_flags |= rxvt_term::BG_IS_TRANSPARENT;
           }
-
-#endif
 
 #endif
 
@@ -2390,6 +2389,9 @@ rxvt_img::tint (SV *c)
 	C_ARGS: cc
 
 rxvt_img *
+rxvt_img::shade (rxvt_img::nv factor)
+
+rxvt_img *
 rxvt_img::filter (octet_string name, SV *params = &PL_sv_undef)
 	CODE:
         rxvt_img::nv *vparams = 0;
@@ -2397,20 +2399,18 @@ rxvt_img::filter (octet_string name, SV *params = &PL_sv_undef)
 
         if (SvOK (params))
 	  {
-            // we overlay rxvt_temp_buf, what a hack
-            assert (sizeof (rxvt_img::nv) >= sizeof (int));
-
             if (!SvROK (params) || SvTYPE (SvRV (params)) != SVt_PVAV)
               croak ("rxvt_img::filter: params must be an array reference with parameter values");
 
             nparams = av_len ((AV *)SvRV (params)) + 1;
-            vparams = rxvt_temp_buf<rxvt_img::nv> (nparams);
+            vparams = (rxvt_img::nv *)malloc (nparams * sizeof (rxvt_img::nv));
 
             for (int i = 0; i < nparams; ++i)
               vparams [i] = SvNV (*av_fetch ((AV *)SvRV (params), i, 1));
           }
 
         RETVAL = THIS->filter (name, nparams, vparams);
+        free (vparams);
 	OUTPUT:
         RETVAL
 
