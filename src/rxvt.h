@@ -77,8 +77,17 @@ typedef  int32_t tlen_t_; // specifically for use in the line_t structure
 # include <gdk-pixbuf/gdk-pixbuf.h>
 #endif
 
-#if defined(BG_IMAGE_FROM_FILE) || defined(ENABLE_TRANSPARENCY)
+#if XRENDER && (HAVE_PIXBUF || ENABLE_TRANSPARENCY)
 # define HAVE_BG_PIXMAP 1
+#endif
+
+#if HAVE_BG_PIXMAP
+# if HAVE_PIXBUF
+#  define BG_IMAGE_FROM_FILE 1
+# endif
+# if ENABLE_TRANSPARENCY
+#  define BG_IMAGE_FROM_ROOT 1
+# endif
 #endif
 
 #include <ecb.h>
@@ -582,7 +591,7 @@ enum colour_list {
 #ifdef RXVT_SCROLLBAR
   Color_trough,
 #endif
-#if ENABLE_TRANSPARENCY
+#if BG_IMAGE_FROM_ROOT
   Color_tint,
 #endif
 #if OFF_FOCUS_FADING
@@ -1174,13 +1183,33 @@ struct rxvt_term : zero_initialized, rxvt_vars, rxvt_screen
   XComposeStatus  compose;
   static struct termios def_tio;
   row_col_t       oldcursor;
+
 #ifdef HAVE_BG_PIXMAP
   void bg_init ();
   void bg_destroy ();
 
-  enum {
-    BG_IS_VALID          = 1 << 0,
+# if BG_IMAGE_FROM_FILE
+  rxvt_image fimage;
+  void render_image (rxvt_image &image);
+# endif
 
+# if BG_IMAGE_FROM_ROOT
+  rxvt_img *root_img;
+  image_effects root_effects;
+
+  void render_root_image ();
+# endif
+
+  ev_tstamp bg_valid_since;
+
+  bool bg_window_size_sensitive ();
+  bool bg_window_position_sensitive ();
+
+  void bg_render ();
+#endif
+
+#ifdef HAVE_IMG
+  enum {
     BG_IS_TRANSPARENT    = 1 << 1,
     BG_NEEDS_REFRESH     = 1 << 2,
     BG_INHIBIT_RENDER    = 1 << 3,
@@ -1188,38 +1217,7 @@ struct rxvt_term : zero_initialized, rxvt_vars, rxvt_screen
 
   uint8_t bg_flags;
 
-# if BG_IMAGE_FROM_FILE
-  rxvt_image fimage;
-  void get_image_geometry (rxvt_image &image, int &w, int &h, int &x, int &y);
-  bool render_image (rxvt_image &image);
-# endif
-
-# if ENABLE_TRANSPARENCY
-  rxvt_img *root_img;
-  image_effects root_effects;
-
-  void bg_set_transparent ()
-  {
-    bg_flags |= BG_IS_TRANSPARENT;
-  }
-  void bg_set_root_pixmap ();
-  bool render_root_image ();
-# endif
-
-  void tint_image (rxvt_img *img, rxvt_color &tint, bool tint_set, int shade);
-
-  ev_tstamp bg_valid_since;
-
   rxvt_img *bg_img;
-
-  bool bg_window_size_sensitive ();
-  bool bg_window_position_sensitive ();
-
-  void bg_render ();
-  void bg_invalidate ()
-  {
-    bg_flags &= ~BG_IS_VALID;
-  }
 #endif
 
 #if ENABLE_OVERLAY
@@ -1283,7 +1281,7 @@ struct rxvt_term : zero_initialized, rxvt_vars, rxvt_screen
     XSelectInput (dpy, vt, vt_emask | vt_emask_perl | vt_emask_xim | vt_emask_mouse);
   }
 
-#if ENABLE_TRANSPARENCY || ENABLE_PERL
+#if BG_IMAGE_FROM_ROOT || ENABLE_PERL
   void rootwin_cb (XEvent &xev);
   xevent_watcher rootwin_ev;
 #endif
@@ -1487,7 +1485,9 @@ struct rxvt_term : zero_initialized, rxvt_vars, rxvt_screen
   void scr_blank_line (line_t &l, unsigned int col, unsigned int width, rend_t efs) const NOTHROW;
   void scr_blank_screen_mem (line_t &l, rend_t efs) const NOTHROW;
   void scr_kill_char (line_t &l, int col) const NOTHROW;
+  void scr_set_char_rend (line_t &l, int col, rend_t rend);
   int scr_scroll_text (int row1, int row2, int count) NOTHROW;
+  void copy_line (line_t &dst, line_t &src);
   void scr_reset ();
   void scr_release () NOTHROW;
   void scr_clear (bool really = false) NOTHROW;
@@ -1546,6 +1546,7 @@ struct rxvt_term : zero_initialized, rxvt_vars, rxvt_screen
   void scr_dump (int fd) NOTHROW;
 
   void selection_check (int check_more) NOTHROW;
+  void selection_changed () NOTHROW; /* sets want_refresh, corrects coordinates */
   void selection_request (Time tm, int selnum = Sel_Primary) NOTHROW;
   void selection_clear (bool clipboard = false) NOTHROW;
   void selection_make (Time tm);

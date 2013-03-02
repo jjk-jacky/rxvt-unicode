@@ -30,7 +30,7 @@
 void
 rxvt_term::bg_destroy ()
 {
-# if ENABLE_TRANSPARENCY
+# if BG_IMAGE_FROM_ROOT
   delete root_img;
   root_img = 0;
 # endif
@@ -38,16 +38,13 @@ rxvt_term::bg_destroy ()
 # if BG_IMAGE_FROM_FILE
   fimage.destroy ();
 # endif
-
-  delete bg_img;
-  bg_img = 0;
 }
 
 bool
 rxvt_term::bg_window_size_sensitive ()
 {
-# if ENABLE_TRANSPARENCY
-  if (bg_flags & BG_IS_TRANSPARENT)
+# if BG_IMAGE_FROM_ROOT
+  if (root_img)
     return true;
 # endif
 
@@ -67,8 +64,8 @@ rxvt_term::bg_window_size_sensitive ()
 bool
 rxvt_term::bg_window_position_sensitive ()
 {
-# if ENABLE_TRANSPARENCY
-  if (bg_flags & BG_IS_TRANSPARENT)
+# if BG_IMAGE_FROM_ROOT
+  if (root_img)
     return true;
 # endif
 
@@ -257,7 +254,7 @@ rxvt_image::set_geometry (const char *geom, bool update)
 }
 
 void
-rxvt_term::get_image_geometry (rxvt_image &image, int &w, int &h, int &x, int &y)
+rxvt_term::render_image (rxvt_image &image)
 {
   int image_width = image.img->w;
   int image_height = image.img->h;
@@ -265,6 +262,11 @@ rxvt_term::get_image_geometry (rxvt_image &image, int &w, int &h, int &x, int &y
   int parent_height = szHint.height;
   int h_scale = min (image.h_scale, 32767 * 100 / parent_width);
   int v_scale = min (image.v_scale, 32767 * 100 / parent_height);
+
+  int w;
+  int h;
+  int x;
+  int y;
 
   w = h_scale * parent_width / 100;
   h = v_scale * parent_height / 100;
@@ -290,27 +292,13 @@ rxvt_term::get_image_geometry (rxvt_image &image, int &w, int &h, int &x, int &y
       x = make_align_position (image.h_align, parent_width, w);
       y = make_align_position (image.v_align, parent_height, h);
     }
-}
-
-bool
-rxvt_term::render_image (rxvt_image &image)
-{
-  int parent_width = szHint.width;
-  int parent_height = szHint.height;
-
-  int x = 0;
-  int y = 0;
-  int w = 0;
-  int h = 0;
-
-  get_image_geometry (image, w, h, x, y);
 
   if (!(image.flags & IM_ROOT_ALIGN)
       && (x >= parent_width
           || y >= parent_height
           || x + w <= 0
           || y + h <= 0))
-    return false;
+    return;
 
   rxvt_img *img = image.img->scale (w, h);
 
@@ -320,7 +308,7 @@ rxvt_term::render_image (rxvt_image &image)
     img->repeat_mode (RepeatNone);
   img->sub_rect (-x, -y, parent_width, parent_height)->replace (img);
 
-  if (bg_flags & BG_IS_VALID)
+  if (bg_img)
     img->draw (bg_img, PictOpOver, image.alpha * 1. / 0xffff);
 
   XRenderPictFormat *format = XRenderFindVisualFormat (dpy, visual);
@@ -328,8 +316,6 @@ rxvt_term::render_image (rxvt_image &image)
 
   delete bg_img;
   bg_img = img;
-
-  return true;
 }
 
 rxvt_image::rxvt_image ()
@@ -439,13 +425,13 @@ image_effects::set_shade (const char *shade_str)
   return false;
 }
 
-# if ENABLE_TRANSPARENCY
+# if BG_IMAGE_FROM_ROOT
 /*
  * Builds a pixmap of the same size as the terminal window that contains
  * the tiled portion of the root pixmap that is supposed to be covered by
  * our window.
  */
-bool
+void
 rxvt_term::render_root_image ()
 {
   /* root dimensions may change from call to call - but Display structure should
@@ -461,13 +447,10 @@ rxvt_term::render_root_image ()
   sx = parent_x;
   sy = parent_y;
 
-  if (!root_img)
-    return false;
-
   /* check if we are outside of the visible part of the virtual screen : */
   if (sx + parent_width <= 0 || sy + parent_height <= 0
       || sx >= root_width || sy >= root_height)
-    return 0;
+    return;
 
   while (sx < 0) sx += root_img->w;
   while (sy < 0) sy += root_img->h;
@@ -478,24 +461,22 @@ rxvt_term::render_root_image ()
     img->blur (root_effects.h_blurRadius, root_effects.v_blurRadius)->replace (img);
 
   if (root_effects.need_tint ())
-    tint_image (img, root_effects.tint, root_effects.tint_set, root_effects.shade);
+    {
+      rgba c (rgba::MAX_CC, rgba::MAX_CC, rgba::MAX_CC);
+
+      if (root_effects.tint_set)
+        root_effects.tint.get (c);
+      rxvt_img::nv factor = root_effects.shade / 100. - 1.;
+      img->shade (factor, c)->replace (img);
+    }
 
   XRenderPictFormat *format = XRenderFindVisualFormat (dpy, visual);
   img->convert_format (format, pix_colors [Color_bg])->replace (img);
 
   delete bg_img;
   bg_img = img;
-
-  return true;
 }
-
-void
-rxvt_term::bg_set_root_pixmap ()
-{
-  delete root_img;
-  root_img = rxvt_img::new_from_root (this);
-}
-# endif /* ENABLE_TRANSPARENCY */
+# endif /* BG_IMAGE_FROM_ROOT */
 
 void
 rxvt_term::bg_render ()
@@ -503,29 +484,25 @@ rxvt_term::bg_render ()
   if (bg_flags & BG_INHIBIT_RENDER)
     return;
 
-  bg_invalidate ();
-# if ENABLE_TRANSPARENCY
-  if (bg_flags & BG_IS_TRANSPARENT)
+  delete bg_img;
+  bg_img = 0;
+  bg_flags = 0;
+
+  if (!mapped)
+    return;
+
+# if BG_IMAGE_FROM_ROOT
+  if (root_img)
     {
-      /*  we need to re-generate transparency pixmap in that case ! */
-      if (render_root_image ())
-        bg_flags |= BG_IS_VALID;
+      render_root_image ();
+      bg_flags |= BG_IS_TRANSPARENT;
     }
 # endif
 
 # if BG_IMAGE_FROM_FILE
   if (fimage.img)
-    {
-      if (render_image (fimage))
-        bg_flags |= BG_IS_VALID;
-    }
+    render_image (fimage);
 # endif
-
-  if (!(bg_flags & BG_IS_VALID))
-    {
-      delete bg_img;
-      bg_img = 0;
-    }
 
   scr_recolour (false);
   bg_flags |= BG_NEEDS_REFRESH;
@@ -536,11 +513,9 @@ rxvt_term::bg_render ()
 void
 rxvt_term::bg_init ()
 {
-#if ENABLE_TRANSPARENCY
+#if BG_IMAGE_FROM_ROOT
   if (option (Opt_transparent))
     {
-      bg_set_transparent ();
-
       if (rs [Rs_blurradius])
         root_effects.set_blur (rs [Rs_blurradius]);
 
@@ -550,7 +525,7 @@ rxvt_term::bg_init ()
       if (rs [Rs_shade])
         root_effects.set_shade (rs [Rs_shade]);
 
-      bg_set_root_pixmap ();
+      rxvt_img::new_from_root (this)->replace (root_img);
       XSelectInput (dpy, display->root, PropertyChangeMask);
       rootwin_ev.start (display, display->root);
     }
@@ -564,39 +539,6 @@ rxvt_term::bg_init ()
         update_background ();
     }
 #endif
-}
-
-void
-rxvt_term::tint_image (rxvt_img *img, rxvt_color &tint, bool tint_set, int shade)
-{
-  rgba c (rgba::MAX_CC, rgba::MAX_CC, rgba::MAX_CC);
-
-  if (tint_set)
-    tint.get (c);
-
-  if (shade > 100)
-    {
-      c.r = c.r * (200 - shade) / 100;
-      c.g = c.g * (200 - shade) / 100;
-      c.b = c.b * (200 - shade) / 100;
-    }
-  else
-    {
-      c.r = c.r * shade / 100;
-      c.g = c.g * shade / 100;
-      c.b = c.b * shade / 100;
-    }
-
-  img->contrast (c.r, c.g, c.b, c.a);
-
-  if (shade > 100)
-    {
-      c.a = 0xffff;
-      c.r =
-      c.g =
-      c.b = 0xffff * (shade - 100) / 100;
-      img->brightness (c.r, c.g, c.b, c.a);
-    }
 }
 
 #endif /* HAVE_BG_PIXMAP */
