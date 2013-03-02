@@ -943,7 +943,7 @@ rxvt_term::flush ()
 {
   flush_ev.stop ();
 
-#ifdef HAVE_BG_PIXMAP
+#ifdef HAVE_IMG
   if (bg_flags & BG_NEEDS_REFRESH)
     {
       bg_flags &= ~BG_NEEDS_REFRESH;
@@ -1474,7 +1474,7 @@ rxvt_term::x_cb (XEvent &ev)
             if (bg_window_position_sensitive ())
               {
                 want_position_change = true;
-                if (!(bg_flags & BG_IS_VALID))
+                if (bg_img == 0)
                   moved = true;
               }
 #endif
@@ -1531,19 +1531,14 @@ rxvt_term::x_cb (XEvent &ev)
 
       case MapNotify:
 #ifdef HAVE_BG_PIXMAP
-        /* This is needed specifically to fix the case of no window manager or a
-         * non-reparenting window manager. In those cases we never get first
-         * ConfigureNotify. Also that speeds startup under normal WM, by taking
-         * care of multiplicity of ConfigureNotify events arriving while WM does
-         * reparenting.
-         * We should not render background immediately, as there could be several
-         * ConfigureNotify's to follow. Lets take care of all of them in one scoop
-         * by scheduling background redraw as soon as we can, but giving a short
-         * bit of time for ConfigureNotifies to arrive.
-         * We should render background PRIOR to drawing any text, but AFTER all
-         * of ConfigureNotifys for the best results.
-         */
-        if (!(bg_flags & BG_IS_VALID))
+        // This is needed at startup for the case of no window manager
+        // or a non-reparenting window manager and also because we
+        // defer bg image updates if the window is not mapped. The
+        // short delay is to optimize for multiple ConfigureNotify
+        // events at startup when the window manager reparents the
+        // window, so as to perform the computation after we have
+        // received all of them.
+        if (bg_img == 0)
           update_background_ev.start (0.025);
 #endif
         mapped = 1;
@@ -1840,7 +1835,7 @@ rxvt_term::update_fade_color (unsigned int idx)
 #endif
 }
 
-#if ENABLE_TRANSPARENCY || ENABLE_PERL
+#if BG_IMAGE_FROM_ROOT || ENABLE_PERL
 void ecb_hot
 rxvt_term::rootwin_cb (XEvent &ev)
 {
@@ -1860,13 +1855,14 @@ rxvt_term::rootwin_cb (XEvent &ev)
         if (ev.xproperty.atom == xa[XA_XROOTPMAP_ID]
             || ev.xproperty.atom == xa[XA_ESETROOT_PMAP_ID])
           {
-# if ENABLE_TRANSPARENCY
-            bg_set_root_pixmap ();
-            update_background ();
+#if BG_IMAGE_FROM_ROOT
+            if (option (Opt_transparent))
+              {
+                rxvt_img::new_from_root (this)->replace (root_img);
+                update_background ();
+              }
 #endif
-#if ENABLE_PERL
             HOOK_INVOKE ((this, HOOK_ROOTPMAP_CHANGE, DT_END));
-#endif
           }
 
         break;
@@ -3455,7 +3451,8 @@ rxvt_term::process_xterm_seq (int op, char *str, char resp)
       case URxvt_Color_border:
         process_color_seq (op, Color_border, str, resp);
         break;
-#if ENABLE_TRANSPARENCY
+
+#if BG_IMAGE_FROM_ROOT
       case URxvt_Color_tint:
         process_color_seq (op, Color_tint, str, resp);
         {

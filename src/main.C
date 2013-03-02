@@ -170,7 +170,7 @@ rxvt_term::rxvt_term ()
 #if defined(MOUSE_WHEEL) && defined(MOUSE_SLIP_WHEELING)
   slip_wheel_ev.set       <rxvt_term, &rxvt_term::slip_wheel_cb>   (this);
 #endif
-#if ENABLE_TRANSPARENCY || ENABLE_PERL
+#if BG_IMAGE_FROM_ROOT || ENABLE_PERL
   rootwin_ev.set          <rxvt_term, &rxvt_term::rootwin_cb> (this),
 #endif
   scrollbar_ev.set        <rxvt_term, &rxvt_term::x_cb>       (this),
@@ -228,6 +228,10 @@ rxvt_term::~rxvt_term ()
   bg_destroy ();
 #endif
 
+#if HAVE_IMG
+  delete bg_img;
+#endif
+
   if (display)
     {
       selection_clear ();
@@ -237,9 +241,12 @@ rxvt_term::~rxvt_term ()
       im_destroy ();
 #endif
       scrollBar.destroy ();
-      if (gc)   XFreeGC (dpy, gc);
+
+      if (gc)
+        XFreeGC (dpy, gc);
 
       delete drawable;
+
       // destroy all windows
       if (parent)
         XDestroyWindow (dpy, parent);
@@ -313,7 +320,7 @@ rxvt_term::destroy ()
       im_ev.stop (display);
 #endif
       scrollbar_ev.stop (display);
-#if ENABLE_TRANSPARENCY || ENABLE_PERL
+#if BG_IMAGE_FROM_ROOT || ENABLE_PERL
       rootwin_ev.stop (display);
 #endif
       termwin_ev.stop (display);
@@ -1367,7 +1374,7 @@ rxvt_term::im_get_ic (const char *modifiers)
 
   set_environ (envv);
 
-  if (! ((p = XSetLocaleModifiers (modifiers)) && *p))
+  if (!((p = XSetLocaleModifiers (modifiers)) && *p))
     return false;
 
   input_method = display->get_xim (locale, modifiers);
@@ -1683,11 +1690,6 @@ void
 rxvt_term::update_background ()
 {
   if (update_background_ev.is_active ())
-    return;
-
-  bg_invalidate ();
-
-  if (!mapped)
     return;
 
   ev_tstamp to_wait = 0.5 - (ev::now () - bg_valid_since);
